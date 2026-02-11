@@ -1,24 +1,45 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { connectMongo } from '@/lib/mongo';
+import { requireAuth } from '@/lib/auth';
+import { Booking } from '@/models';
 
-export async function GET(request: NextRequest) {
-  // Return demo bookings/availability
-  return NextResponse.json({
-    bookings: [
-      {
-        _id: '507f1f77bcf86cd799439016',
-        startAt: new Date('2024-02-20'),
-        endAt: new Date('2024-02-20'),
-        serviceName: 'Consultation',
-        status: 'confirmed',
-      },
-    ],
-  });
+export async function GET(_request: NextRequest) {
+  try {
+    const token = await requireAuth();
+    await connectMongo();
+
+    const bookings = await Booking.find({ workspaceId: token.workspaceId })
+      .sort({ startAt: -1 })
+      .limit(200)
+      .lean();
+
+    return NextResponse.json({ bookings });
+  } catch (e: any) {
+    if (e?.message === 'UNAUTHORIZED') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+  }
 }
 
 export async function POST(request: NextRequest) {
-  const body = await request.json();
-  // In production, create booking in MongoDB
-  return NextResponse.json({
-    booking: { ...body, _id: '507f1f77bcf86cd799439017' },
-  });
+  try {
+    const token = await requireAuth();
+    await connectMongo();
+
+    const body = await request.json();
+    const { startAt, endAt, serviceName, memo, status } = body || {};
+
+    const booking = await Booking.create({
+      workspaceId: token.workspaceId,
+      startAt: new Date(startAt),
+      endAt: new Date(endAt),
+      serviceName,
+      memo,
+      status,
+    });
+
+    return NextResponse.json({ booking });
+  } catch (e: any) {
+    if (e?.message === 'UNAUTHORIZED') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+  }
 }

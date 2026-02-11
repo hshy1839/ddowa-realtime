@@ -1,25 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { connectMongo } from '@/lib/mongo';
+import { requireAuth } from '@/lib/auth';
+import { Contact } from '@/models';
 
-export async function GET(request: NextRequest) {
-  // Return demo contacts
-  return NextResponse.json({
-    contacts: [
-      {
-        _id: '507f1f77bcf86cd799439013',
-        name: 'John Doe',
-        phone: '+1234567890',
-        email: 'john@example.com',
-        tags: ['premium', 'vip'],
-        lastSeenAt: new Date(),
-      },
-    ],
-  });
+export async function GET(_request: NextRequest) {
+  try {
+    const token = await requireAuth();
+    await connectMongo();
+
+    const contacts = await Contact.find({ workspaceId: token.workspaceId })
+      .sort({ updatedAt: -1 })
+      .limit(200)
+      .lean();
+
+    return NextResponse.json({ contacts });
+  } catch (e: any) {
+    if (e?.message === 'UNAUTHORIZED') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+  }
 }
 
 export async function POST(request: NextRequest) {
-  const body = await request.json();
-  // In production, save to MongoDB
-  return NextResponse.json({
-    contact: { ...body, _id: '507f1f77bcf86cd799439014' },
-  });
+  try {
+    const token = await requireAuth();
+    await connectMongo();
+
+    const body = await request.json();
+    const { name, email, phone, tags } = body || {};
+
+    const contact = await Contact.create({
+      workspaceId: token.workspaceId,
+      name,
+      email: email?.toLowerCase(),
+      phone,
+      tags: Array.isArray(tags) ? tags : [],
+      lastSeenAt: new Date(),
+    });
+
+    return NextResponse.json({ contact });
+  } catch (e: any) {
+    if (e?.message === 'UNAUTHORIZED') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+  }
 }

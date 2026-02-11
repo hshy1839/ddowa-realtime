@@ -1,14 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { connectMongo } from '@/lib/mongo';
+import { requireAuth } from '@/lib/auth';
+import { Workspace } from '@/models';
 
-export async function GET(request: NextRequest) {
-  // Return a demo workspace for now
-  // In production, fetch from MongoDB based on user's workspaceId
-  return NextResponse.json({
-    workspace: {
-      _id: '507f1f77bcf86cd799439011',
-      name: 'Demo Workspace',
-      slug: 'demo',
-      timezone: 'UTC',
-    },
-  });
+export async function GET(_request: NextRequest) {
+  try {
+    const token = await requireAuth();
+    await connectMongo();
+
+    const workspace = await Workspace.findById(token.workspaceId).lean();
+    if (!workspace) {
+      return NextResponse.json({ error: 'Workspace not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ workspace });
+  } catch (e: any) {
+    if (e?.message === 'UNAUTHORIZED') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+  }
 }

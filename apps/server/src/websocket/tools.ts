@@ -42,25 +42,36 @@ export async function executeToolCall(
         try {
           // Create booking in MongoDB
           const booking = await Booking.create({
+            workspaceId,
             startAt: new Date(startTime),
             endAt: new Date(endTime),
             serviceName: serviceName || 'General Consultation',
             status: 'confirmed',
-            contactId: null, // Will be linked to contact if provided
+            contactId: undefined, // Will be linked to contact if provided
           });
 
           // Also save/update contact if provided
-          if (customerEmail) {
-            await Contact.findOneAndUpdate(
-              { email: customerEmail },
+          if (customerEmail || customerPhone) {
+            const emailNorm = customerEmail ? String(customerEmail).toLowerCase() : undefined;
+
+            const contact = await Contact.findOneAndUpdate(
               {
+                workspaceId,
+                ...(emailNorm ? { email: emailNorm } : { phone: customerPhone }),
+              },
+              {
+                workspaceId,
                 name: customerName || 'Customer',
                 phone: customerPhone,
-                email: customerEmail,
+                email: emailNorm,
                 lastSeenAt: new Date(),
               },
-              { upsert: true }
+              { upsert: true, new: true }
             );
+
+            if (contact?._id) {
+              await Booking.findByIdAndUpdate(booking._id, { contactId: contact._id });
+            }
           }
 
           return {

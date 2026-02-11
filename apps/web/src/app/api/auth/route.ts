@@ -1,71 +1,93 @@
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto';
 import { cookies } from 'next/headers';
-
-// Simple in-memory auth store (in production, use a real backend)
-const users: Map<string, { email: string; passwordHash: string; workspaceId: string }> = new Map();
-const workspaces: Map<string, any> = new Map();
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
+import { connectMongo } from '@/lib/mongo';
+import { User, Workspace } from '@/models';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
-function hashPassword(password: string): string {
-  return crypto.createHash('sha256').update(password).digest('hex');
-}
-
-function generateToken(userId: string, email: string, workspaceId: string): string {
-  // Simple JWT-like token (in production, use jsonwebtoken library)
-  const payload = { userId, email, workspaceId, iat: Date.now() };
-  return Buffer.from(JSON.stringify(payload)).toString('base64');
+function signToken(userId: string, email: string, workspaceId: string): string {
+  return jwt.sign({ userId, email, workspaceId }, JWT_SECRET, { expiresIn: '7d' });
 }
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { email, password, action } = body;
+  const { email, password, action } = body as {
+    email?: string;
+    password?: string;
+    action?: 'signup' | 'login';
+  };
+
+  if (!email || !password || !action) {
+    return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
+  }
+
+  await connectMongo();
 
   if (action === 'signup') {
-    if (users.has(email)) {
+    const existing = await User.findOne({ email: email.toLowerCase() });
+    if (existing) {
       return NextResponse.json({ error: 'User already exists' }, { status: 400 });
     }
 
-    const workspaceId = crypto.randomUUID();
-    const passwordHash = hashPassword(password);
-    users.set(email, { email, passwordHash, workspaceId });
+    const slugBase = email.split('@')[0].toLowerCase().replace(/[^a-z0-9-_]/g, '');
+    const slug = slugBase || `ws-${Date.now()}`;
 
-    // Create default workspace
-    workspaces.set(workspaceId, {
-      _id: workspaceId,
+    const workspace = await Workspace.create({
       name: 'My Workspace',
-      slug: email.split('@')[0],
+      slug,
       timezone: 'UTC',
     });
 
-    const token = generateToken(crypto.randomUUID(), email, workspaceId);
+    const passwordHash = await bcrypt.hash(password, 10);
+    const user = await User.create({
+      email: email.toLowerCase(),
+      passwordHash,
+      role: 'admin',
+      workspaceId: workspace._id,
+    });
+
+    const token = signToken(user._id.toString(), user.email, workspace._id.toString());
+
     const cookieStore = await cookies();
     cookieStore.set('token', token, {
       httpOnly: true,
-      maxAge: 7 * 24 * 60 * 60, // 7 days
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60,
+      path: '/',
     });
 
     return NextResponse.json({
       token,
-      user: { email, workspaceId },
+      user: { id: user._id.toString(), email: user.email, workspaceId: workspace._id.toString() },
     });
-  } else if (action === 'login') {
-    const user = users.get(email);
-    if (!user || user.passwordHash !== hashPassword(password)) {
+  }
+
+  if (action === 'login') {
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
     }
 
-    const token = generateToken(crypto.randomUUID(), email, user.workspaceId);
+    const ok = await bcrypt.compare(password, user.passwordHash);
+    if (!ok) {
+      return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
+    }
+
+    const token = signToken(user._id.toString(), user.email, user.workspaceId.toString());
+
     const cookieStore = await cookies();
     cookieStore.set('token', token, {
       httpOnly: true,
+      sameSite: 'lax',
       maxAge: 7 * 24 * 60 * 60,
+      path: '/',
     });
 
     return NextResponse.json({
       token,
-      user: { email, workspaceId: user.workspaceId },
+      user: { id: user._id.toString(), email: user.email, workspaceId: user.workspaceId.toString() },
     });
   }
 

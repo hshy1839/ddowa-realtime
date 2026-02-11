@@ -1,32 +1,118 @@
 import { WebSocket } from 'ws';
+import axios from 'axios';
 import { IAgentProvider } from '../providers/types';
 import { GeminiLiveProvider } from '../providers/GeminiLiveProvider';
-import { Conversation, Message, Contact } from '../models';
+import { Conversation, Message, Workspace } from '../models';
 import { executeToolCall } from './tools';
 import { IParsedToken } from '../lib/jwt';
 
 export interface WSSession {
   ws: WebSocket;
   userId: string;
-  workspaceId: string;
-  conversationId: string;
+  workspaceId: string; // Mongo ObjectId string
+  conversationId: string; // Mongo ObjectId string
   provider: IAgentProvider;
   startTime: number;
 }
 
 const sessions = new Map<string, WSSession>();
 
-export async function handleWSConnection(
-  ws: WebSocket,
-  token: IParsedToken | null,
-  workspaceSlug?: string
-) {
-  if (!token && !workspaceSlug) {
+async function ensureWorkspaceId(token: IParsedToken | null, workspaceSlug?: string): Promise<string | null> {
+  if (token?.workspaceId) return token.workspaceId;
+  if (!workspaceSlug) return null;
+
+  const slug = workspaceSlug.toLowerCase();
+  const existing = await Workspace.findOne({ slug }).lean();
+  if (existing) return existing._id.toString();
+
+  const created = await Workspace.create({
+    name: `${workspaceSlug} Workspace`,
+    slug,
+    timezone: 'UTC',
+  });
+  return created._id.toString();
+}
+
+async function geminiHealthcheck(ws: WebSocket) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    ws.send(
+      JSON.stringify({
+        type: 'gemini.health',
+        ok: false,
+        message: 'GEMINI_API_KEY not set',
+      })
+    );
+    return;
+  }
+
+  try {
+    // 1) Basic auth + connectivity check
+    const modelsRes = await axios.get(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`
+    );
+
+    // 2) Real generateContent ping (ensures the key can actually call a model)
+    let pingOk = false;
+    let pingStatus: number | undefined;
+    let pingError: string | undefined;
+
+    try {
+      const pingRes = await axios.post(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+        {
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: 'ping' }],
+            },
+          ],
+          generationConfig: { maxOutputTokens: 5 },
+        },
+        { headers: { 'Content-Type': 'application/json' } }
+      );
+
+      pingOk = !!pingRes.data?.candidates?.[0]?.content;
+      pingStatus = pingRes.status;
+    } catch (pe: any) {
+      pingOk = false;
+      pingStatus = pe?.response?.status;
+      pingError = pe?.response?.data?.error?.message || pe?.message;
+    }
+
+    ws.send(
+      JSON.stringify({
+        type: 'gemini.health',
+        ok: true,
+        status: modelsRes.status,
+        modelCount: Array.isArray(modelsRes.data?.models) ? modelsRes.data.models.length : undefined,
+        ping: {
+          ok: pingOk,
+          status: pingStatus,
+          error: pingError,
+        },
+      })
+    );
+  } catch (e: any) {
+    ws.send(
+      JSON.stringify({
+        type: 'gemini.health',
+        ok: false,
+        status: e?.response?.status,
+        message: e?.response?.data?.error?.message || e?.message || 'Gemini healthcheck failed',
+      })
+    );
+  }
+}
+
+export async function handleWSConnection(ws: WebSocket, token: IParsedToken | null, workspaceSlug?: string) {
+  const workspaceId = await ensureWorkspaceId(token, workspaceSlug);
+  if (!workspaceId) {
     ws.close(4001, 'Unauthorized');
     return;
   }
 
-  const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const sessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
   // Create AI provider instance
   const provider = new GeminiLiveProvider();
@@ -35,15 +121,14 @@ export async function handleWSConnection(
   const session: WSSession = {
     ws,
     userId: token?.userId || 'anonymous',
-    workspaceId: token?.workspaceId || workspaceSlug || 'demo',
+    workspaceId,
     conversationId: '',
     provider,
     startTime: Date.now(),
   };
 
   sessions.set(sessionId, session);
-
-  console.log(`[WS] Client connected: ${sessionId}`);
+  console.log(`[WS] Client connected: ${sessionId} workspace=${workspaceId}`);
 
   ws.on('message', async (data) => {
     try {
@@ -84,33 +169,30 @@ async function handleWSMessage(sessionId: string, message: any) {
   try {
     switch (type) {
       case 'call.start': {
-        // Start a new conversation
-        const conversationId = `conv_${Date.now()}`;
-        session.conversationId = conversationId;
+        session.startTime = Date.now();
 
-        // Initialize provider for this conversation
-        await session.provider.startConversation(conversationId);
+        // (요구사항) 통화 시작 시 Gemini API 연결 상태를 1회 확인
+        await geminiHealthcheck(session.ws);
 
         // Create conversation in MongoDB
-        try {
-          const conversation = await Conversation.create({
-            _id: conversationId,
-            workspaceId: session.workspaceId,
-            channel: 'web',
-            status: 'ongoing',
-            startedAt: new Date(),
-            durationSec: 0,
-          });
-          console.log(`📞 Conversation created: ${conversationId}`);
-        } catch (error) {
-          console.error('Failed to create conversation:', error);
-        }
+        const conversation = await Conversation.create({
+          workspaceId: session.workspaceId,
+          channel: 'web',
+          status: 'ongoing',
+          startedAt: new Date(),
+          durationSec: 0,
+        });
+
+        session.conversationId = conversation._id.toString();
+
+        // Start provider conversation
+        await session.provider.startConversation(session.conversationId);
 
         // Send call.started event
         session.ws.send(
           JSON.stringify({
             type: 'call.started',
-            conversationId,
+            conversationId: session.conversationId,
           })
         );
 
@@ -134,9 +216,7 @@ async function handleWSMessage(sessionId: string, message: any) {
           break;
         }
 
-        // Send audio to AI provider
         await session.provider.sendAudioChunk(pcm16ChunkBase64, sampleRate, seq);
-
         break;
       }
 
@@ -152,28 +232,17 @@ async function handleWSMessage(sessionId: string, message: any) {
           break;
         }
 
-        // End conversation with provider
         const { summary, intent } = await session.provider.endConversation();
         const durationSec = Math.floor((Date.now() - session.startTime) / 1000);
 
-        // Save conversation to MongoDB
-        try {
-          await Conversation.findByIdAndUpdate(
-            session.conversationId,
-            {
-              status: 'completed',
-              endedAt: new Date(),
-              durationSec,
-              summary,
-              intent,
-            }
-          );
-          console.log(`✓ Conversation saved: ${session.conversationId}`);
-        } catch (error) {
-          console.error('Failed to save conversation:', error);
-        }
+        await Conversation.findByIdAndUpdate(session.conversationId, {
+          status: 'completed',
+          endedAt: new Date(),
+          durationSec,
+          summary,
+          intent,
+        });
 
-        // Send call.ended event
         session.ws.send(
           JSON.stringify({
             type: 'call.ended',
@@ -205,18 +274,44 @@ async function handleWSMessage(sessionId: string, message: any) {
 }
 
 function setupProviderListeners(session: WSSession) {
-  // Listen for STT updates
-  session.provider.on('stt.delta', (event) => {
+  // (중복 등록 방지)
+  (session.provider as any).removeAllListeners?.();
+
+  session.provider.on('stt.delta', async (event: any) => {
     session.ws.send(JSON.stringify({ type: 'stt.delta', textDelta: event.textDelta }));
+
+    if (session.conversationId && event.textDelta) {
+      try {
+        await Message.create({
+          conversationId: session.conversationId,
+          role: 'user',
+          text: event.textDelta,
+          createdAt: new Date(),
+        });
+      } catch (e) {
+        console.error('Failed to save user message:', e);
+      }
+    }
   });
 
-  // Listen for agent text
-  session.provider.on('agent.delta', (event) => {
+  session.provider.on('agent.delta', async (event: any) => {
     session.ws.send(JSON.stringify({ type: 'agent.delta', textDelta: event.textDelta }));
+
+    if (session.conversationId && event.textDelta) {
+      try {
+        await Message.create({
+          conversationId: session.conversationId,
+          role: 'agent',
+          text: event.textDelta,
+          createdAt: new Date(),
+        });
+      } catch (e) {
+        console.error('Failed to save agent message:', e);
+      }
+    }
   });
 
-  // Listen for audio output
-  session.provider.on('tts.audio', (event) => {
+  session.provider.on('tts.audio', (event: any) => {
     session.ws.send(
       JSON.stringify({
         type: 'tts.audio',
@@ -225,9 +320,7 @@ function setupProviderListeners(session: WSSession) {
     );
   });
 
-  // Listen for tool calls
-  session.provider.on('tool.call', async (event) => {
-    // Send tool call to client first
+  session.provider.on('tool.call', async (event: any) => {
     session.ws.send(
       JSON.stringify({
         type: 'tool.call',
@@ -237,7 +330,6 @@ function setupProviderListeners(session: WSSession) {
       })
     );
 
-    // Execute tool on server
     const toolResult = await executeToolCall(
       event.toolName!,
       event.toolArgs!,
@@ -245,12 +337,10 @@ function setupProviderListeners(session: WSSession) {
       session.conversationId
     );
 
-    // Send result back to provider
     await session.provider.sendToolResult(toolResult);
   });
 
-  // Listen for errors
-  session.provider.on('error', (event) => {
+  session.provider.on('error', (event: any) => {
     session.ws.send(
       JSON.stringify({
         type: 'error',

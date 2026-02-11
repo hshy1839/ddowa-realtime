@@ -23,7 +23,9 @@ export default function PublicCallPage() {
     console.log('🔗 WebSocket URL:', wsUrl);
     setMessages([`🔗 연결 시도: ${wsUrl}`]);
 
-    wsRef.current = new WebSocket(wsUrl);
+    const u = new URL(wsUrl);
+    u.searchParams.set('workspaceSlug', workspaceSlug);
+    wsRef.current = new WebSocket(u.toString());
 
     wsRef.current.onopen = () => {
       console.log('✓ WebSocket Connected!');

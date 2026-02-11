@@ -1,35 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+import { requireAuth } from '@/lib/auth';
 
-// Simple token verification (in production, verify JWT with a real backend)
-async function verifyToken(request: NextRequest) {
-  const cookieStore = await cookies();
-  const token = cookieStore.get('token')?.value;
-
-  if (!token) {
-    return null;
-  }
-
+export async function GET(_request: NextRequest) {
   try {
-    const decoded = JSON.parse(Buffer.from(token, 'base64').toString());
-    return decoded;
+    const token = await requireAuth();
+    return NextResponse.json({
+      user: {
+        id: token.userId,
+        email: token.email,
+        workspaceId: token.workspaceId,
+      },
+    });
   } catch {
-    return null;
-  }
-}
-
-export async function GET(request: NextRequest) {
-  const tokenData = await verifyToken(request);
-
-  if (!tokenData) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-
-  return NextResponse.json({
-    user: {
-      id: tokenData.userId,
-      email: tokenData.email,
-      workspaceId: tokenData.workspaceId,
-    },
-  });
 }

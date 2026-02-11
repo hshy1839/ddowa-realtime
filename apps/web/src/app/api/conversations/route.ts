@@ -1,19 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { connectMongo } from '@/lib/mongo';
+import { requireAuth } from '@/lib/auth';
+import { Conversation } from '@/models';
 
-export async function GET(request: NextRequest) {
-  // Return demo conversations/inbox
-  return NextResponse.json({
-    conversations: [
-      {
-        _id: '507f1f77bcf86cd799439015',
-        contactId: '507f1f77bcf86cd799439013',
-        status: 'completed',
-        startedAt: new Date('2024-01-15'),
-        endedAt: new Date('2024-01-15'),
-        durationSec: 300,
-        summary: 'Customer inquiry about service pricing',
-        intent: 'information_request',
-      },
-    ],
-  });
+export async function GET(_request: NextRequest) {
+  try {
+    const token = await requireAuth();
+    await connectMongo();
+
+    const conversations = await Conversation.find({ workspaceId: token.workspaceId })
+      .sort({ startedAt: -1 })
+      .limit(100)
+      .lean();
+
+    return NextResponse.json({ conversations });
+  } catch (e: any) {
+    if (e?.message === 'UNAUTHORIZED') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+  }
 }
