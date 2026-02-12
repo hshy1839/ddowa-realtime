@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import axios from 'axios';
 import { IAgentProvider, AgentEvent, ToolResult } from './types';
+import { GeminiRealtimeClient } from './GeminiRealtimeClient';
 
 /**
  * Google Gemini Multimodal Live API Provider
@@ -13,10 +14,13 @@ export class GeminiLiveProvider extends EventEmitter implements IAgentProvider {
   private sessionId: string = '';
   private messages: { role: 'user' | 'assistant'; content: string }[] = [];
   private tools: any[] = [];
+  private rt: GeminiRealtimeClient | null = null;
+  private realtimeEnabled: boolean = true;
 
   async initialize(config: any): Promise<void> {
     this.config = config;
     this.apiKey = process.env.GEMINI_API_KEY || '';
+    this.realtimeEnabled = (process.env.GEMINI_REALTIME_ENABLED || 'true').toLowerCase() !== 'false';
 
     if (!this.apiKey) {
       throw new Error('GEMINI_API_KEY environment variable not set');
@@ -24,6 +28,26 @@ export class GeminiLiveProvider extends EventEmitter implements IAgentProvider {
 
     // Setup tools from config
     this.setupTools();
+
+    if (this.realtimeEnabled) {
+      this.rt = new GeminiRealtimeClient({ apiKey: this.apiKey });
+      this.rt.on('event', (ev) => {
+        if (ev.type === 'stt.delta') this.emit('stt.delta', { textDelta: ev.textDelta });
+        if (ev.type === 'agent.delta') this.emit('agent.delta', { textDelta: ev.textDelta });
+        if (ev.type === 'tts.audio') this.emit('tts.audio', { pcm16ChunkBase64: ev.pcm16ChunkBase64 });
+        if (ev.type === 'error') {
+          this.emit('error', { code: 'GEMINI_REALTIME_ERROR', message: ev.message });
+        }
+        if (ev.type === 'debug') {
+          // keep console noise low by truncating
+          const msg = typeof ev.data === 'string' ? ev.data : JSON.stringify(ev.data || {}).slice(0, 400);
+          console.log('[GeminiRT]', ev.message, msg);
+        }
+      });
+
+      // Connect once; reconnection can be added later
+      await this.rt.connect();
+    }
 
     console.log('Gemini Live Provider initialized');
   }
@@ -85,12 +109,9 @@ export class GeminiLiveProvider extends EventEmitter implements IAgentProvider {
     // Generate a unique session ID for this conversation
     this.sessionId = `session_${Date.now()}`;
 
-    // Initialize system prompt with tool instructions
+    // Keep text history for summarization / fallback.
     const systemPrompt = this.buildSystemPrompt();
-    this.messages.push({
-      role: 'user',
-      content: systemPrompt,
-    });
+    this.messages.push({ role: 'user', content: systemPrompt });
 
     console.log(`Started conversation: ${conversationId}`);
   }
@@ -116,17 +137,16 @@ Always maintain a friendly and professional tone.`;
     seq: number
   ): Promise<void> {
     try {
-      // In a real implementation, you would send this to Gemini's streaming audio endpoint
-      // For now, we simulate speech-to-text and text response
+      if (this.realtimeEnabled && this.rt) {
+        // True realtime: forward audio to Gemini Live.
+        this.rt.sendAudioChunk(pcm16ChunkBase64, sampleRate || 16000);
+        return;
+      }
 
-      // Decode audio (simplified - would need proper audio processing)
+      // Fallback (non-realtime) path
       const audioData = Buffer.from(pcm16ChunkBase64, 'base64');
-
-      // Simulate STT output
       const userText = this.simulateSTT(audioData);
       this.emit('stt.delta', { textDelta: userText });
-
-      // Send to Gemini and get response
       await this.getGeminiResponse(userText);
     } catch (error) {
       console.error('Error sending audio chunk:', error);
@@ -355,6 +375,12 @@ Always maintain a friendly and professional tone.`;
   }
 
   async disconnect(): Promise<void> {
+    try {
+      this.rt?.disconnect();
+    } catch {
+      // ignore
+    }
+    this.rt = null;
     this.removeAllListeners();
   }
 }

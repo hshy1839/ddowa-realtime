@@ -13,6 +13,9 @@ export default function CallPage() {
   const [sttText, setSttText] = useState('');
   const [agentText, setAgentText] = useState('');
   const [geminiHealth, setGeminiHealth] = useState<string>('');
+  const [wsReady, setWsReady] = useState(false);
+  const [micGranted, setMicGranted] = useState(false);
+  const [streamingOn, setStreamingOn] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -26,6 +29,7 @@ export default function CallPage() {
 
     wsRef.current.onopen = () => {
       console.log('WebSocket connected');
+      setWsReady(true);
     };
 
     wsRef.current.onmessage = (event) => {
@@ -62,6 +66,7 @@ export default function CallPage() {
 
     wsRef.current.onclose = () => {
       console.log('WebSocket disconnected');
+      setWsReady(false);
       stopStreaming();
     };
 
@@ -91,8 +96,10 @@ export default function CallPage() {
     // Request mic first; streaming begins after call.started arrives
     try {
       micStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setMicGranted(true);
     } catch (error) {
       console.error('Microphone access denied:', error);
+      setMicGranted(false);
       alert('마이크 권한이 필요합니다.');
       return;
     }
@@ -101,6 +108,7 @@ export default function CallPage() {
     setSttText('');
     setAgentText('');
     setGeminiHealth('');
+    setStreamingOn(false);
 
     wsRef.current.send(JSON.stringify({ type: 'call.start' }));
   };
@@ -125,6 +133,8 @@ export default function CallPage() {
 
     source.connect(processor);
     processor.connect(audioContext.destination);
+
+    setStreamingOn(true);
 
     processor.onaudioprocess = (event) => {
       const ws = wsRef.current;
@@ -152,6 +162,8 @@ export default function CallPage() {
   };
 
   const stopStreaming = () => {
+    setStreamingOn(false);
+
     if (processorRef.current) {
       try {
         processorRef.current.disconnect();
@@ -208,6 +220,9 @@ export default function CallPage() {
             <p className="text-slate-400">
               상태: <span className="font-semibold">{isCallActive ? '진행 중' : '대기 중'}</span>
             </p>
+            <p className="text-slate-400 text-sm">WebSocket: {wsReady ? '연결됨' : '연결 안 됨'}</p>
+            <p className="text-slate-400 text-sm">마이크: {micGranted ? '허용됨' : '대기/미허용'}</p>
+            <p className={`text-sm ${streamingOn ? 'text-green-400' : 'text-slate-400'}`}>🎙️ 지금 말하세요: {streamingOn ? 'ON (Streaming)' : 'OFF'}</p>
             {conversationId && <p className="text-slate-400 text-sm">ID: {conversationId.slice(0, 8)}...</p>}
             {geminiHealth && <p className="text-slate-400 text-sm">{geminiHealth}</p>}
           </div>
