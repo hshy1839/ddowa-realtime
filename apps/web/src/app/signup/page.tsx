@@ -20,10 +20,21 @@ export default function SignupPage() {
     }
 
     try {
+      console.log('👤 회원가입 시도:', email);
       const response = await api.post('/auth', { email, password, action: 'signup' });
+      console.log('✓ 회원가입 성공:', response.data);
       setAuthToken(response.data.token);
+      console.log('📍 대시보드로 이동 시작...');
+      
+      // 라우터 이동
       router.push('/app');
-    } catch {
+      
+      // 페이지 새로고침 (확실한 이동)
+      setTimeout(() => {
+        window.location.href = '/app';
+      }, 500);
+    } catch (error) {
+      console.error('❌ 회원가입 실패:', error);
       setError('회원가입 실패. 다시 시도하세요.');
     }
   };

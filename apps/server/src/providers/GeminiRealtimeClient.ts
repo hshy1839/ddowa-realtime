@@ -124,6 +124,7 @@ export class GeminiRealtimeClient extends EventEmitter {
         ?.inlineData?.data;
 
     if (audioData) {
+      console.log('🔊 [GeminiRT] TTS audio chunk received');
       this.emit('event', { type: 'tts.audio', pcm16ChunkBase64: audioData });
     }
 
@@ -134,17 +135,20 @@ export class GeminiRealtimeClient extends EventEmitter {
       msg?.server_content?.turn_complete?.text;
 
     if (typeof textPart === 'string' && textPart.length) {
+      console.log('💬 [GeminiRT] Agent response:', textPart.substring(0, 100));
       this.emit('event', { type: 'agent.delta', textDelta: textPart });
     }
 
     // 3) Input transcription deltas (STT)
     const stt = msg?.server_content?.input_transcription?.text || msg?.serverContent?.inputTranscription?.text;
     if (typeof stt === 'string' && stt.length) {
+      console.log('📝 [GeminiRT] STT text:', stt.substring(0, 100));
       this.emit('event', { type: 'stt.delta', textDelta: stt });
     }
 
     // 4) Unknown payload debug
     if (!audioData && !textPart && !stt) {
+      console.log('🔍 [GeminiRT] Unknown message type:', JSON.stringify(msg).substring(0, 200));
       this.emit('event', { type: 'debug', message: 'Gemini message', data: msg });
     }
   }

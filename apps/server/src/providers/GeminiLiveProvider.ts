@@ -139,11 +139,13 @@ Always maintain a friendly and professional tone.`;
     try {
       if (this.realtimeEnabled && this.rt) {
         // True realtime: forward audio to Gemini Live.
+        console.log('🎙️ [SENDAUDIO] Forwarding to Gemini Live (realtime)');
         this.rt.sendAudioChunk(pcm16ChunkBase64, sampleRate || 16000);
         return;
       }
 
       // Fallback (non-realtime) path
+      console.log('🎙️ [SENDAUDIO] Using fallback (non-realtime) STT path');
       const audioData = Buffer.from(pcm16ChunkBase64, 'base64');
       const userText = this.simulateSTT(audioData);
       this.emit('stt.delta', { textDelta: userText });
@@ -315,34 +317,47 @@ Always maintain a friendly and professional tone.`;
       // Generate summary using Gemini
       const conversationText = this.messages.map((m) => `${m.role}: ${m.content}`).join('\n');
 
-      const response = await axios.post(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${this.apiKey}`,
-        {
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                {
-                  text: `Please summarize this conversation and identify the customer's intent in 1-2 sentences each.\n\nConversation:\n${conversationText}`,
-                },
-              ],
-            },
-          ],
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
+      try {
+        const response = await axios.post(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${this.apiKey}`,
+          {
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  {
+                    text: `Please summarize this conversation and identify the customer's intent in 1-2 sentences each.\n\nConversation:\n${conversationText}`,
+                  },
+                ],
+              },
+            ],
           },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+
+        const responseText = response.data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+        // Parse summary and intent from response
+        const summary = responseText.split('Intent:')[0].replace('Summary:', '').trim() || 'Conversation completed';
+        const intent = (responseText.split('Intent:')[1] || 'general_inquiry').trim().toLowerCase().replace(/[^a-z_]/g, '_');
+
+        return { summary, intent };
+      } catch (summaryError: any) {
+        // Handle rate limiting (429) and other errors gracefully
+        if (summaryError.response?.status === 429) {
+          console.warn('⚠️ [RATE_LIMITED] Status 429 - skipping summary generation');
+        } else {
+          console.error('❌ [SUMMARY_ERROR]:', summaryError.message);
         }
-      );
-
-      const responseText = response.data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-
-      // Parse summary and intent from response
-      const summary = responseText.split('Intent:')[0].replace('Summary:', '').trim() || 'Conversation completed';
-      const intent = (responseText.split('Intent:')[1] || 'general_inquiry').trim().toLowerCase().replace(/[^a-z_]/g, '_');
-
-      return { summary, intent };
+        return {
+          summary: 'Conversation completed',
+          intent: 'general_inquiry',
+        };
+      }
     } catch (error) {
       console.error('Error ending conversation:', error);
       return {

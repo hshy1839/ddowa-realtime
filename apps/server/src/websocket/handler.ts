@@ -133,6 +133,7 @@ export async function handleWSConnection(ws: WebSocket, token: IParsedToken | nu
   ws.on('message', async (data) => {
     try {
       const message = JSON.parse(data.toString());
+      console.log(`[WS] ${sessionId} received:`, message.type);
       await handleWSMessage(sessionId, message);
     } catch (error) {
       console.error('[WS] Error handling message:', error);
@@ -169,6 +170,7 @@ async function handleWSMessage(sessionId: string, message: any) {
   try {
     switch (type) {
       case 'call.start': {
+        console.log(`🎯 [CALL.START] ${sessionId} starting call...`);
         session.startTime = Date.now();
 
         // (요구사항) 통화 시작 시 Gemini API 연결 상태를 1회 확인
@@ -184,9 +186,12 @@ async function handleWSMessage(sessionId: string, message: any) {
         });
 
         session.conversationId = conversation._id.toString();
+        console.log(`✓ [CALL.START] Conversation created: ${session.conversationId}`);
 
         // Start provider conversation
+        console.log(`📞 [CALL.START] Starting Gemini conversation...`);
         await session.provider.startConversation(session.conversationId);
+        console.log(`✓ [CALL.START] Gemini conversation started`);
 
         // Send call.started event
         session.ws.send(
@@ -216,11 +221,17 @@ async function handleWSMessage(sessionId: string, message: any) {
           break;
         }
 
-        await session.provider.sendAudioChunk(pcm16ChunkBase64, sampleRate, seq);
+        console.log(`🎤 [AUDIO] ${sessionId} sending audio chunk (${pcm16ChunkBase64.length} bytes)`);
+        try {
+          await session.provider.sendAudioChunk(pcm16ChunkBase64, sampleRate, seq);
+        } catch (audioError) {
+          console.error(`❌ [AUDIO] Error processing audio:`, audioError);
+        }
         break;
       }
 
       case 'call.stop': {
+        console.log(`📴 [CALL.STOP] ${sessionId} stopping call...`);
         if (!session.conversationId) {
           session.ws.send(
             JSON.stringify({
@@ -276,8 +287,10 @@ async function handleWSMessage(sessionId: string, message: any) {
 function setupProviderListeners(session: WSSession) {
   // (중복 등록 방지)
   (session.provider as any).removeAllListeners?.();
+  console.log(`🎤 [EVENTS] setupProviderListeners called for ${session.conversationId}`);
 
   session.provider.on('stt.delta', async (event: any) => {
+    console.log(`📝 [STT.DELTA] ${event.textDelta}`);
     session.ws.send(JSON.stringify({ type: 'stt.delta', textDelta: event.textDelta }));
 
     if (session.conversationId && event.textDelta) {
@@ -295,6 +308,7 @@ function setupProviderListeners(session: WSSession) {
   });
 
   session.provider.on('agent.delta', async (event: any) => {
+    console.log(`💬 [AGENT.DELTA] ${event.textDelta}`);
     session.ws.send(JSON.stringify({ type: 'agent.delta', textDelta: event.textDelta }));
 
     if (session.conversationId && event.textDelta) {
@@ -312,6 +326,7 @@ function setupProviderListeners(session: WSSession) {
   });
 
   session.provider.on('tts.audio', (event: any) => {
+    console.log(`🔊 [TTS.AUDIO] received ${event.pcm16ChunkBase64?.length || 0} bytes`);
     session.ws.send(
       JSON.stringify({
         type: 'tts.audio',
@@ -321,6 +336,7 @@ function setupProviderListeners(session: WSSession) {
   });
 
   session.provider.on('tool.call', async (event: any) => {
+    console.log(`🛠️ [TOOL.CALL] ${event.toolName}`);
     session.ws.send(
       JSON.stringify({
         type: 'tool.call',
@@ -341,6 +357,7 @@ function setupProviderListeners(session: WSSession) {
   });
 
   session.provider.on('error', (event: any) => {
+    console.error(`❌ [PROVIDER.ERROR]`, event);
     session.ws.send(
       JSON.stringify({
         type: 'error',

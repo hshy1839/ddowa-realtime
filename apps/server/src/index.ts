@@ -2,11 +2,16 @@ import express from 'express';
 import http from 'http';
 import { WebSocketServer } from 'ws';
 import dotenv from 'dotenv';
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
 import { connectMongo } from './lib/mongo';
 import { verifyToken } from './lib/jwt';
 import { handleWSConnection } from './websocket/handler';
+import { User, Workspace } from './models';
 
 dotenv.config();
+
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
 function parseCookies(cookieHeader: string | undefined): Record<string, string> {
   if (!cookieHeader) return {};
@@ -32,13 +37,109 @@ async function main() {
 
   // CORS 설정
   app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    res.header('Access-Control-Allow-Origin', 'http://localhost:3000');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    
+    // OPTIONS 요청 처리
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(200);
+    }
+    
     next();
   });
 
+  app.use(express.json());
+
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok', message: 'Tohwa server is running' });
+  });
+
+  // Auth endpoints
+  app.post('/api/auth', async (req, res) => {
+    console.log('📍 [AUTH] POST /api/auth 요청 받음');
+    console.log('📍 [AUTH] Body:', req.body);
+    
+    try {
+      const { email, password, action } = req.body;
+
+      console.log(`📍 [AUTH] email=${email}, action=${action}`);
+
+      if (!email || !password || !action) {
+        console.error('❌ [AUTH] Missing fields');
+        return res.status(400).json({ error: 'Missing fields' });
+      }
+
+      if (action === 'signup') {
+        console.log('📍 [AUTH] 회원가입 시작:', email);
+        const existing = await User.findOne({ email: email.toLowerCase() });
+        if (existing) {
+          console.error('❌ [AUTH] 사용자 이미 존재:', email);
+          return res.status(400).json({ error: 'User already exists' });
+        }
+
+        const slugBase = email.split('@')[0].toLowerCase().replace(/[^a-z0-9-_]/g, '');
+        const slug = slugBase || `ws-${Date.now()}`;
+
+        console.log('📍 [AUTH] Workspace 생성 중:', slug);
+        const workspace = await Workspace.create({
+          name: 'My Workspace',
+          slug,
+          timezone: 'UTC',
+        });
+        console.log('✓ [AUTH] Workspace 생성됨:', workspace._id);
+
+        console.log('📍 [AUTH] 비밀번호 해싱 중...');
+        const passwordHash = await bcrypt.hash(password, 10);
+        const user = await User.create({
+          email: email.toLowerCase(),
+          passwordHash,
+          role: 'admin',
+          workspaceId: workspace._id,
+        });
+        console.log('✓ [AUTH] 사용자 생성됨:', user._id);
+
+        const token = jwt.sign(
+          { userId: user._id, email: user.email, workspaceId: workspace._id },
+          JWT_SECRET,
+          { expiresIn: '7d' }
+        );
+        console.log('✓ [AUTH] 토큰 생성됨');
+
+        return res.json({ token, user: { email: user.email } });
+      }
+
+      if (action === 'login') {
+        console.log('📍 [AUTH] 로그인 시작:', email);
+        const user = await User.findOne({ email: email.toLowerCase() });
+        if (!user) {
+          console.error('❌ [AUTH] 사용자 없음:', email);
+          return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
+        const validPassword = await bcrypt.compare(password, user.passwordHash);
+        if (!validPassword) {
+          console.error('❌ [AUTH] 비밀번호 불일치');
+          return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
+        const token = jwt.sign(
+          { userId: user._id, email: user.email, workspaceId: user.workspaceId },
+          JWT_SECRET,
+          { expiresIn: '7d' }
+        );
+        console.log('✓ [AUTH] 로그인 성공:', email);
+
+        return res.json({ token, user: { email: user.email } });
+      }
+
+      console.error('❌ [AUTH] 잘못된 action:', action);
+      return res.status(400).json({ error: 'Invalid action' });
+    } catch (error) {
+      console.error('❌ [AUTH] 에러:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
   });
 
   wss.on('connection', (ws, req) => {

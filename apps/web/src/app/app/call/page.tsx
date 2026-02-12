@@ -16,6 +16,7 @@ export default function CallPage() {
   const [wsReady, setWsReady] = useState(false);
   const [micGranted, setMicGranted] = useState(false);
   const [streamingOn, setStreamingOn] = useState(false);
+  const [isListening, setIsListening] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -25,47 +26,57 @@ export default function CallPage() {
 
   useEffect(() => {
     const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:7777';
+    console.log(`🔌 WebSocket 연결 시도: ${wsUrl}`);
     wsRef.current = new WebSocket(wsUrl);
 
     wsRef.current.onopen = () => {
-      console.log('WebSocket connected');
+      console.log('✅ WebSocket 연결됨');
       setWsReady(true);
     };
 
     wsRef.current.onmessage = (event) => {
+      console.log(`📨 WebSocket 메시지 받음:`, event.data);
       const message = JSON.parse(event.data) as WSMessage;
 
       if (message.type === 'gemini.health') {
+        console.log(`🏥 [GEMINI.HEALTH]`, message);
         setGeminiHealth(message.ok ? 'Gemini OK' : `Gemini FAIL: ${message.message || message.status}`);
         return;
       }
 
       if (message.type === 'call.started') {
+        console.log(`📞 [CALL.STARTED]`, message.conversationId);
         conversationIdRef.current = message.conversationId;
         setConversationId(message.conversationId);
         setIsCallActive(true);
         startStreaming();
       } else if (message.type === 'stt.delta') {
+        console.log(`📝 [STT.DELTA]`, message.textDelta);
         setSttText((prev) => prev + (message.textDelta || ''));
       } else if (message.type === 'agent.delta') {
+        console.log(`💬 [AGENT.DELTA]`, message.textDelta);
         setAgentText((prev) => prev + (message.textDelta || ''));
       } else if (message.type === 'tts.audio') {
+        console.log(`🔊 [TTS.AUDIO] ${message.pcm16ChunkBase64?.length || 0} bytes`);
         playAudio(message.pcm16ChunkBase64);
       } else if (message.type === 'call.ended') {
+        console.log(`📴 [CALL.ENDED]`);
         setIsCallActive(false);
         stopStreaming();
         console.log('Call ended:', message);
       } else if (message.type === 'error') {
-        console.error('WebSocket error:', message);
+        console.error('❌ WebSocket error:', message);
+      } else {
+        console.log(`❓ 알 수 없는 메시지 타입: ${message.type}`, message);
       }
     };
 
     wsRef.current.onerror = (error) => {
-      console.error('WebSocket error:', error);
+      console.error('❌ WebSocket 에러:', error);
     };
 
     wsRef.current.onclose = () => {
-      console.log('WebSocket disconnected');
+      console.log('🔌 WebSocket 연결 해제');
       setWsReady(false);
       stopStreaming();
     };
@@ -87,18 +98,22 @@ export default function CallPage() {
 
   const startCall = async () => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      console.error('❌ WebSocket not connected');
       alert('WebSocket not connected');
       return;
     }
 
+    console.log('🎤 상담 시작...');
     ensureAudioContext();
 
     // Request mic first; streaming begins after call.started arrives
     try {
+      console.log('🎙️ 마이크 권한 요청...');
       micStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
       setMicGranted(true);
+      console.log('✅ 마이크 권한 획득');
     } catch (error) {
-      console.error('Microphone access denied:', error);
+      console.error('❌ 마이크 접근 거부:', error);
       setMicGranted(false);
       alert('마이크 권한이 필요합니다.');
       return;
@@ -110,7 +125,9 @@ export default function CallPage() {
     setGeminiHealth('');
     setStreamingOn(false);
 
+    console.log('📤 call.start 메시지 전송');
     wsRef.current.send(JSON.stringify({ type: 'call.start' }));
+    console.log('✅ call.start 전송됨');
   };
 
   const stopCall = () => {
@@ -142,6 +159,16 @@ export default function CallPage() {
       if (!conversationIdRef.current) return;
 
       const inputData = event.inputBuffer.getChannelData(0);
+      
+      // 마이크 입력 음량 감지
+      let sum = 0;
+      for (let i = 0; i < inputData.length; i++) {
+        sum += inputData[i] * inputData[i];
+      }
+      const rms = Math.sqrt(sum / inputData.length);
+      const isVoiceDetected = rms > 0.01; // 임계값: 0.01
+      setIsListening(isVoiceDetected);
+      
       const pcm16 = new Int16Array(inputData.length);
 
       for (let i = 0; i < inputData.length; i++) {
@@ -222,7 +249,9 @@ export default function CallPage() {
             </p>
             <p className="text-slate-400 text-sm">WebSocket: {wsReady ? '연결됨' : '연결 안 됨'}</p>
             <p className="text-slate-400 text-sm">마이크: {micGranted ? '허용됨' : '대기/미허용'}</p>
-            <p className={`text-sm ${streamingOn ? 'text-green-400' : 'text-slate-400'}`}>🎙️ 지금 말하세요: {streamingOn ? 'ON (Streaming)' : 'OFF'}</p>
+            <p className={`text-sm font-semibold ${streamingOn ? 'text-green-400' : 'text-slate-400'}`}>
+              🎙️ {streamingOn ? (isListening ? '✨ 입력 중...' : '대기 중') : '미활성'}
+            </p>
             {conversationId && <p className="text-slate-400 text-sm">ID: {conversationId.slice(0, 8)}...</p>}
             {geminiHealth && <p className="text-slate-400 text-sm">{geminiHealth}</p>}
           </div>

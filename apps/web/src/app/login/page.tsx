@@ -13,10 +13,21 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      console.log('🔐 로그인 시도:', email);
       const response = await api.post('/auth', { email, password, action: 'login' });
+      console.log('✓ 로그인 성공:', response.data);
       setAuthToken(response.data.token);
+      console.log('📍 대시보드로 이동 시작...');
+      
+      // 라우터 이동
       router.push('/app');
-    } catch {
+      
+      // 페이지 새로고침 (확실한 이동)
+      setTimeout(() => {
+        window.location.href = '/app';
+      }, 500);
+    } catch (error) {
+      console.error('❌ 로그인 실패:', error);
       setError('로그인 실패. 이메일과 비밀번호를 확인하세요.');
     }
   };

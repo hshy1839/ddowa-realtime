@@ -1,6 +1,12 @@
 'use client';
 
+import { useEffect } from 'react';
+
 export default function DashboardPage() {
+  useEffect(() => {
+    console.log('✓ 대시보드 페이지 로드됨!');
+  }, []);
+
   return (
     <div>
       <h1 className="text-3xl font-bold mb-8">대시보드</h1>
