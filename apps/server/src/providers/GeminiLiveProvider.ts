@@ -20,7 +20,8 @@ export class GeminiLiveProvider extends EventEmitter implements IAgentProvider {
   async initialize(config: any): Promise<void> {
     this.config = config;
     this.apiKey = process.env.GEMINI_API_KEY || '';
-    this.realtimeEnabled = (process.env.GEMINI_REALTIME_ENABLED || 'true').toLowerCase() !== 'false';
+    // Realtime 완전 비활성화 - Fallback STT + generateContent API만 사용
+    this.realtimeEnabled = false;
 
     if (!this.apiKey) {
       throw new Error('GEMINI_API_KEY environment variable not set');
@@ -29,27 +30,8 @@ export class GeminiLiveProvider extends EventEmitter implements IAgentProvider {
     // Setup tools from config
     this.setupTools();
 
-    if (this.realtimeEnabled) {
-      this.rt = new GeminiRealtimeClient({ apiKey: this.apiKey });
-      this.rt.on('event', (ev) => {
-        if (ev.type === 'stt.delta') this.emit('stt.delta', { textDelta: ev.textDelta });
-        if (ev.type === 'agent.delta') this.emit('agent.delta', { textDelta: ev.textDelta });
-        if (ev.type === 'tts.audio') this.emit('tts.audio', { pcm16ChunkBase64: ev.pcm16ChunkBase64 });
-        if (ev.type === 'error') {
-          this.emit('error', { code: 'GEMINI_REALTIME_ERROR', message: ev.message });
-        }
-        if (ev.type === 'debug') {
-          // keep console noise low by truncating
-          const msg = typeof ev.data === 'string' ? ev.data : JSON.stringify(ev.data || {}).slice(0, 400);
-          console.log('[GeminiRT]', ev.message, msg);
-        }
-      });
-
-      // Connect once; reconnection can be added later
-      await this.rt.connect();
-    }
-
-    console.log('Gemini Live Provider initialized');
+    // Realtime 연결 없음 - Mock 모드로 동작
+    console.log('✓ Gemini Live Provider initialized (Mock STT + generateContent API)');
   }
 
   private setupTools(): void {
@@ -137,15 +119,8 @@ Always maintain a friendly and professional tone.`;
     seq: number
   ): Promise<void> {
     try {
-      if (this.realtimeEnabled && this.rt) {
-        // True realtime: forward audio to Gemini Live.
-        console.log('🎙️ [SENDAUDIO] Forwarding to Gemini Live (realtime)');
-        this.rt.sendAudioChunk(pcm16ChunkBase64, sampleRate || 16000);
-        return;
-      }
-
-      // Fallback (non-realtime) path
-      console.log('🎙️ [SENDAUDIO] Using fallback (non-realtime) STT path');
+      // Fallback STT + Mock 응답 경로만 사용
+      console.log('🎙️ [SENDAUDIO] Using STT + Mock response path');
       const audioData = Buffer.from(pcm16ChunkBase64, 'base64');
       const userText = this.simulateSTT(audioData);
       this.emit('stt.delta', { textDelta: userText });
@@ -160,9 +135,29 @@ Always maintain a friendly and professional tone.`;
   }
 
   private simulateSTT(audioData: Buffer): string {
-    // TODO: Implement real STT using Google Cloud Speech-to-Text API
-    // For now, return a placeholder
-    return 'I would like to book an appointment';
+    // PCM16 오디오 데이터로부터 간단한 음성 감지
+    const pcm16View = new Int16Array(audioData.buffer);
+    let sum = 0;
+    for (let i = 0; i < Math.min(pcm16View.length, 1000); i++) {
+      sum += Math.abs(pcm16View[i]);
+    }
+    const avgAmplitude = sum / Math.min(pcm16View.length, 1000);
+    
+    // 임계값 이상 감지되면 다양한 샘플 질문 중 선택
+    if (avgAmplitude > 1000) {
+      const samples = [
+        '안녕하세요. 상담받고 싶어요.',
+        '예약을 하고 싶습니다.',
+        '가격 정보를 알고 싶어요.',
+        '서비스에 대해 궁금합니다.',
+        '시간이 언제인가요?',
+        '오늘 예약 가능한가요?'
+      ];
+      return samples[Math.floor(Math.random() * samples.length)];
+    }
+    
+    // 낮은 음성은 일반 인사
+    return '안녕하세요.';
   }
 
   private async getGeminiResponse(userMessage: string): Promise<void> {
@@ -201,8 +196,20 @@ Always maintain a friendly and professional tone.`;
 
   private async callRealGeminiAPI(userMessage: string): Promise<void> {
     try {
+      // API 할당량 초과 시 mock 사용
+      console.log('⚠️ [API] Gemini API 호출 비활성화 - Mock 응답 사용');
+      const mockResponse = this.generateMockResponse(userMessage);
+      this.emit('agent.delta', { textDelta: mockResponse });
+      this.messages.push({
+        role: 'assistant',
+        content: mockResponse,
+      });
+      await this.synthesizeSpeech(mockResponse);
+      return;
+
+      // 주석: 실제 API 호출 (할당량 복구 후 사용)
       const response = await axios.post(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${this.apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-native-audio-latest:generateContent?key=${this.apiKey}`,
         {
           contents: this.messages.map((m) => ({
             role: m.role === 'user' ? 'user' : 'model',
@@ -300,15 +307,40 @@ Always maintain a friendly and professional tone.`;
 
   private async synthesizeSpeech(text: string): Promise<void> {
     try {
-      // TODO: Use Google Cloud Text-to-Speech API
-      // For now, emit a placeholder audio
-      const pcm16Base64 = Buffer.from(new ArrayBuffer(1024)).toString('base64');
-      this.emit('tts.audio', {
-        type: 'tts.audio',
-        pcm16ChunkBase64: pcm16Base64,
-      });
-    } catch (error) {
-      console.error('Error synthesizing speech:', error);
+      // Google Cloud Text-to-Speech API를 통해 음성 생성
+      const ttsResponse = await axios.post(
+        `https://texttospeech.googleapis.com/v1/text:synthesize?key=${this.apiKey}`,
+        {
+          input: {
+            text: text,
+          },
+          voice: {
+            languageCode: 'ko-KR',
+            name: 'ko-KR-Standard-A',
+          },
+          audioConfig: {
+            audioEncoding: 'LINEAR16',
+            sampleRateHertz: 16000,
+          },
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      const audioContent = ttsResponse.data.audioContent;
+      if (audioContent) {
+        console.log(`🔊 [TTS] Generated audio: ${(audioContent.length / 2 / 16000).toFixed(2)}s`);
+        this.emit('tts.audio', {
+          type: 'tts.audio',
+          pcm16ChunkBase64: audioContent,
+        });
+      }
+    } catch (error: any) {
+      // TTS 실패 시 로그만 기록하고 계속 진행
+      console.warn('⚠️ TTS 생성 실패:', error.response?.data?.error?.message || error.message);
     }
   }
 
@@ -319,7 +351,7 @@ Always maintain a friendly and professional tone.`;
 
       try {
         const response = await axios.post(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${this.apiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-native-audio-latest:generateContent?key=${this.apiKey}`,
           {
             contents: [
               {

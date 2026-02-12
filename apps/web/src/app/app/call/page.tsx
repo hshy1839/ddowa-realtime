@@ -209,6 +209,8 @@ export default function CallPage() {
 
   const playAudio = (base64: string) => {
     try {
+      console.log(`🔊 [AUDIO PLAY] 오디오 데이터 수신: ${base64.length} bytes`);
+      
       const binaryString = atob(base64);
       const bytes = new Uint8Array(binaryString.length);
       for (let i = 0; i < binaryString.length; i++) {
@@ -217,21 +219,35 @@ export default function CallPage() {
 
       const audioContext = audioContextRef.current || new (window.AudioContext || (window as any).webkitAudioContext)();
       audioContextRef.current = audioContext;
-
-      const audioBuffer = audioContext.createBuffer(1, bytes.length / 2, 16000);
-      const channelData = audioBuffer.getChannelData(0);
-
-      const pcm16 = new Int16Array(bytes.buffer);
-      for (let i = 0; i < pcm16.length; i++) {
-        channelData[i] = pcm16[i] / 32768;
+      
+      console.log(`🔊 [AUDIO] AudioContext state: ${audioContext.state}`);
+      
+      // Resume audio context if suspended
+      if (audioContext.state === 'suspended') {
+        console.warn('⚠️ AudioContext suspended - resuming...');
+        audioContext.resume().then(() => console.log('✅ AudioContext resumed'));
       }
+
+      // PCM16 데이터를 Float32로 변환
+      const pcm16 = new Int16Array(bytes.buffer);
+      const channelData = new Float32Array(pcm16.length);
+      for (let i = 0; i < pcm16.length; i++) {
+        channelData[i] = pcm16[i] / 32768.0; // Normalize to [-1, 1]
+      }
+
+      // OfflineAudioContext 또는 AudioBuffer로 재생
+      const audioBuffer = audioContext.createBuffer(1, channelData.length, 16000);
+      audioBuffer.copyToChannel(channelData, 0);
 
       const source = audioContext.createBufferSource();
       source.buffer = audioBuffer;
       source.connect(audioContext.destination);
+      
+      console.log(`🔊 [AUDIO] Playing audio buffer: ${channelData.length / 16000}s`);
       source.start();
+      console.log(`✅ [AUDIO] Audio playback started`);
     } catch (error) {
-      console.error('Error playing audio:', error);
+      console.error('❌ [AUDIO] Error playing audio:', error);
     }
   };
 
@@ -247,13 +263,13 @@ export default function CallPage() {
             <p className="text-slate-400">
               상태: <span className="font-semibold">{isCallActive ? '진행 중' : '대기 중'}</span>
             </p>
-            <p className="text-slate-400 text-sm">WebSocket: {wsReady ? '연결됨' : '연결 안 됨'}</p>
-            <p className="text-slate-400 text-sm">마이크: {micGranted ? '허용됨' : '대기/미허용'}</p>
+            <p className="text-slate-400 text-sm">WebSocket: {wsReady ? '✅ 연결됨' : '❌ 연결 안 됨'}</p>
+            <p className="text-slate-400 text-sm">마이크: {micGranted ? '✅ 허용됨' : '⏳ 대기/미허용'}</p>
             <p className={`text-sm font-semibold ${streamingOn ? 'text-green-400' : 'text-slate-400'}`}>
-              🎙️ {streamingOn ? (isListening ? '✨ 입력 중...' : '대기 중') : '미활성'}
+              🎙️ {streamingOn ? (isListening ? '✨ 입력 중...' : '⏸️ 대기 중') : '❌ 미활성'}
             </p>
-            {conversationId && <p className="text-slate-400 text-sm">ID: {conversationId.slice(0, 8)}...</p>}
-            {geminiHealth && <p className="text-slate-400 text-sm">{geminiHealth}</p>}
+            {conversationId && <p className="text-slate-400 text-sm">📞 ID: {conversationId.slice(0, 8)}...</p>}
+            {geminiHealth && <p className={`text-sm ${geminiHealth.includes('OK') ? 'text-green-400' : 'text-red-400'}`}>🏥 {geminiHealth}</p>}
           </div>
 
           <div className="flex gap-4">
@@ -278,13 +294,21 @@ export default function CallPage() {
           <h2 className="text-xl font-bold mb-4">실시간 자막</h2>
 
           <div className="mb-4">
-            <p className="text-slate-400 mb-2">사용자:</p>
-            <div className="bg-slate-700 p-3 rounded min-h-[60px] text-sm">{sttText || '...'}</div>
+            <p className="text-slate-400 mb-2">👤 사용자 (STT):</p>
+            <div className="bg-slate-700 p-4 rounded min-h-[80px] text-sm max-h-[150px] overflow-y-auto">
+              {sttText || <span className="text-slate-500">입력 대기 중...</span>}
+            </div>
           </div>
 
           <div>
-            <p className="text-slate-400 mb-2">상담사:</p>
-            <div className="bg-slate-700 p-3 rounded min-h-[60px] text-sm">{agentText || '...'}</div>
+            <p className="text-slate-400 mb-2">🤖 상담사 (Agent):</p>
+            <div className="bg-blue-900 p-4 rounded min-h-[80px] text-sm max-h-[150px] overflow-y-auto text-blue-100">
+              {agentText ? (
+                <span>{agentText}</span>
+              ) : (
+                <span className="text-slate-500">상담사 응답 대기 중...</span>
+              )}
+            </div>
           </div>
         </div>
       </div>

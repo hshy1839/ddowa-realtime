@@ -59,7 +59,7 @@ async function geminiHealthcheck(ws: WebSocket) {
 
     try {
       const pingRes = await axios.post(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-native-audio-latest:generateContent?key=${apiKey}`,
         {
           contents: [
             {
@@ -203,6 +203,51 @@ async function handleWSMessage(sessionId: string, message: any) {
 
         // Setup provider event listeners
         setupProviderListeners(session);
+
+        // 상담 시작 greeting 메시지 자동 송신
+        const greetingMessage = '안녕하세요. 무엇을 도와드릴까요?';
+        console.log(`💬 [GREETING] Sending greeting: ${greetingMessage}`);
+        
+        // Agent 응답으로 처리
+        session.ws.send(JSON.stringify({ type: 'agent.delta', textDelta: greetingMessage }));
+        
+        // TTS로 음성 생성 및 재생 (provider의 내부 메서드 활용)
+        try {
+          const ttsResponse = await axios.post(
+            `https://texttospeech.googleapis.com/v1/text:synthesize?key=${process.env.GEMINI_API_KEY}`,
+            {
+              input: {
+                text: greetingMessage,
+              },
+              voice: {
+                languageCode: 'ko-KR',
+                name: 'ko-KR-Standard-A',
+              },
+              audioConfig: {
+                audioEncoding: 'LINEAR16',
+                sampleRateHertz: 16000,
+              },
+            },
+            {
+              headers: {
+                'Content-Type': 'application/json',
+              },
+            }
+          );
+
+          const audioContent = ttsResponse.data.audioContent;
+          if (audioContent) {
+            console.log(`🔊 [TTS] Greeting audio generated`);
+            session.ws.send(
+              JSON.stringify({
+                type: 'tts.audio',
+                pcm16ChunkBase64: audioContent,
+              })
+            );
+          }
+        } catch (ttsError) {
+          console.warn('⚠️ TTS 생성 실패 (Greeting):', (ttsError as any).response?.data?.error?.message || (ttsError as any).message);
+        }
 
         break;
       }
