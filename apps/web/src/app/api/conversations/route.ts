@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectMongo } from '@/lib/mongo';
 import { requireAuth } from '@/lib/auth';
-import { Conversation } from '@/models';
+import { Conversation, Message } from '@/models';
 
 export async function GET(_request: NextRequest) {
   try {
@@ -13,7 +13,27 @@ export async function GET(_request: NextRequest) {
       .limit(100)
       .lean();
 
-    return NextResponse.json({ conversations });
+    const conversationIds = conversations.map((c: any) => c._id);
+
+    const messages = conversationIds.length
+      ? await Message.find({ conversationId: { $in: conversationIds } })
+          .sort({ createdAt: 1 })
+          .lean()
+      : [];
+
+    const messageMap = new Map<string, any[]>();
+    for (const msg of messages as any[]) {
+      const key = String(msg.conversationId);
+      if (!messageMap.has(key)) messageMap.set(key, []);
+      messageMap.get(key)!.push(msg);
+    }
+
+    const withMessages = conversations.map((conv: any) => ({
+      ...conv,
+      messages: messageMap.get(String(conv._id)) || [],
+    }));
+
+    return NextResponse.json({ conversations: withMessages });
   } catch (e: any) {
     if (e?.message === 'UNAUTHORIZED') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -33,6 +53,12 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'conversationId is required' }, { status: 400 });
     }
 
+    const target = await Conversation.findOne({ _id: conversationId, workspaceId: token.workspaceId }).lean();
+    if (!target) {
+      return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 });
+    }
+
+    await Message.deleteMany({ conversationId });
     const res = await Conversation.deleteOne({ _id: conversationId, workspaceId: token.workspaceId });
 
     return NextResponse.json({ success: res.deletedCount === 1 });
