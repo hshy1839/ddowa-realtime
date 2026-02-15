@@ -10,9 +10,10 @@ export interface ToolResult {
 }
 
 export interface AgentEvent {
-  type: 'stt.delta' | 'agent.delta' | 'tts.audio' | 'tool.call' | 'call.ended' | 'error';
+  type: 'stt.delta' | 'agent.delta' | 'agent.complete' | 'tts.audio' | 'tool.call' | 'call.ended' | 'error';
   textDelta?: string;
   pcm16ChunkBase64?: string;
+  sampleRate?: number;
   toolCallId?: string;
   toolName?: string;
   toolArgs?: Record<string, any>;

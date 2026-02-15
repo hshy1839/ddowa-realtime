@@ -21,3 +21,25 @@ export async function GET(_request: NextRequest) {
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const token = await requireAuth();
+    await connectMongo();
+
+    const { conversationId } = await request.json();
+
+    if (!conversationId) {
+      return NextResponse.json({ error: 'conversationId is required' }, { status: 400 });
+    }
+
+    const res = await Conversation.deleteOne({ _id: conversationId, workspaceId: token.workspaceId });
+
+    return NextResponse.json({ success: res.deletedCount === 1 });
+  } catch (e: any) {
+    if (e?.message === 'UNAUTHORIZED') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+  }
+}

@@ -2,7 +2,7 @@ import { WebSocket } from 'ws';
 import axios from 'axios';
 import { IAgentProvider } from '../providers/types';
 import { GeminiLiveProvider } from '../providers/GeminiLiveProvider';
-import { Conversation, Message, Workspace } from '../models';
+import { AgentConfig, Conversation, Message, Workspace } from '../models';
 import { executeToolCall } from './tools';
 import { IParsedToken } from '../lib/jwt';
 
@@ -13,6 +13,8 @@ export interface WSSession {
   conversationId: string; // Mongo ObjectId string
   provider: IAgentProvider;
   startTime: number;
+  sttBuffer: string;
+  agentBuffer: string;
 }
 
 const sessions = new Map<string, WSSession>();
@@ -125,6 +127,8 @@ export async function handleWSConnection(ws: WebSocket, token: IParsedToken | nu
     conversationId: '',
     provider,
     startTime: Date.now(),
+    sttBuffer: '',
+    agentBuffer: '',
   };
 
   sessions.set(sessionId, session);
@@ -172,6 +176,8 @@ async function handleWSMessage(sessionId: string, message: any) {
       case 'call.start': {
         console.log(`🎯 [CALL.START] ${sessionId} starting call...`);
         session.startTime = Date.now();
+        session.sttBuffer = '';
+        session.agentBuffer = '';
 
         // (요구사항) 통화 시작 시 Gemini API 연결 상태를 1회 확인
         await geminiHealthcheck(session.ws);
@@ -188,6 +194,39 @@ async function handleWSMessage(sessionId: string, message: any) {
         session.conversationId = conversation._id.toString();
         console.log(`✓ [CALL.START] Conversation created: ${session.conversationId}`);
 
+        // 상담사 설정 + 회사 정보 반영
+        const [agentConfig, workspace] = await Promise.all([
+          AgentConfig.findOne({ workspaceId: session.workspaceId }).lean(),
+          Workspace.findById(session.workspaceId).lean(),
+        ]);
+
+        const mergedConfig = {
+          ...(agentConfig || {}),
+          companyName:
+            (agentConfig as any)?.companyName ||
+            (workspace as any)?.businessInfo?.companyName ||
+            (workspace as any)?.name ||
+            '',
+          companyDescription:
+            (agentConfig as any)?.companyDescription ||
+            (workspace as any)?.businessInfo?.description ||
+            '',
+          companyPhone:
+            (agentConfig as any)?.companyPhone ||
+            (workspace as any)?.businessInfo?.phone ||
+            '',
+          companyWebsite:
+            (agentConfig as any)?.companyWebsite ||
+            (workspace as any)?.businessInfo?.website ||
+            '',
+          speechRate: Math.min(1.2, Math.max(0.8, Number((agentConfig as any)?.speechRate ?? 1.0) || 1.0)),
+        };
+
+        (session.provider as GeminiLiveProvider).setAgentConfig(mergedConfig as any);
+
+        // Setup provider event listeners first (avoid missing early realtime events)
+        setupProviderListeners(session);
+
         // Start provider conversation
         console.log(`📞 [CALL.START] Starting Gemini conversation...`);
         await session.provider.startConversation(session.conversationId);
@@ -198,56 +237,9 @@ async function handleWSMessage(sessionId: string, message: any) {
           JSON.stringify({
             type: 'call.started',
             conversationId: session.conversationId,
+            speechRate: (mergedConfig as any).speechRate ?? 1.0,
           })
         );
-
-        // Setup provider event listeners
-        setupProviderListeners(session);
-
-        // 상담 시작 greeting 메시지 자동 송신
-        const greetingMessage = '안녕하세요. 무엇을 도와드릴까요?';
-        console.log(`💬 [GREETING] Sending greeting: ${greetingMessage}`);
-        
-        // Agent 응답으로 처리
-        session.ws.send(JSON.stringify({ type: 'agent.delta', textDelta: greetingMessage }));
-        
-        // TTS로 음성 생성 및 재생 (provider의 내부 메서드 활용)
-        try {
-          const ttsResponse = await axios.post(
-            `https://texttospeech.googleapis.com/v1/text:synthesize?key=${process.env.GEMINI_API_KEY}`,
-            {
-              input: {
-                text: greetingMessage,
-              },
-              voice: {
-                languageCode: 'ko-KR',
-                name: 'ko-KR-Standard-A',
-              },
-              audioConfig: {
-                audioEncoding: 'LINEAR16',
-                sampleRateHertz: 16000,
-              },
-            },
-            {
-              headers: {
-                'Content-Type': 'application/json',
-              },
-            }
-          );
-
-          const audioContent = ttsResponse.data.audioContent;
-          if (audioContent) {
-            console.log(`🔊 [TTS] Greeting audio generated`);
-            session.ws.send(
-              JSON.stringify({
-                type: 'tts.audio',
-                pcm16ChunkBase64: audioContent,
-              })
-            );
-          }
-        } catch (ttsError) {
-          console.warn('⚠️ TTS 생성 실패 (Greeting):', (ttsError as any).response?.data?.error?.message || (ttsError as any).message);
-        }
 
         break;
       }
@@ -309,6 +301,31 @@ async function handleWSMessage(sessionId: string, message: any) {
           })
         );
 
+        if (session.conversationId) {
+          try {
+            if (session.sttBuffer.trim()) {
+              await Message.create({
+                conversationId: session.conversationId,
+                role: 'user',
+                text: session.sttBuffer.trim(),
+                createdAt: new Date(),
+              });
+            }
+            if (session.agentBuffer.trim()) {
+              await Message.create({
+                conversationId: session.conversationId,
+                role: 'agent',
+                text: session.agentBuffer.trim(),
+                createdAt: new Date(),
+              });
+            }
+          } catch (e) {
+            console.error('Failed to flush merged messages on stop:', e);
+          }
+        }
+
+        session.sttBuffer = '';
+        session.agentBuffer = '';
         session.conversationId = '';
         break;
       }
@@ -337,37 +354,48 @@ function setupProviderListeners(session: WSSession) {
   session.provider.on('stt.delta', async (event: any) => {
     console.log(`📝 [STT.DELTA] ${event.textDelta}`);
     session.ws.send(JSON.stringify({ type: 'stt.delta', textDelta: event.textDelta }));
-
-    if (session.conversationId && event.textDelta) {
-      try {
-        await Message.create({
-          conversationId: session.conversationId,
-          role: 'user',
-          text: event.textDelta,
-          createdAt: new Date(),
-        });
-      } catch (e) {
-        console.error('Failed to save user message:', e);
-      }
+    if (event.textDelta) {
+      session.sttBuffer = mergeCaption(session.sttBuffer, event.textDelta);
     }
   });
 
   session.provider.on('agent.delta', async (event: any) => {
     console.log(`💬 [AGENT.DELTA] ${event.textDelta}`);
     session.ws.send(JSON.stringify({ type: 'agent.delta', textDelta: event.textDelta }));
+    if (event.textDelta) {
+      session.agentBuffer = mergeCaption(session.agentBuffer, event.textDelta);
+    }
+  });
 
-    if (session.conversationId && event.textDelta) {
+  session.provider.on('agent.complete', async () => {
+    console.log(`✓ [AGENT.COMPLETE] Agent response complete`);
+
+    if (session.conversationId) {
       try {
-        await Message.create({
-          conversationId: session.conversationId,
-          role: 'agent',
-          text: event.textDelta,
-          createdAt: new Date(),
-        });
+        if (session.sttBuffer.trim()) {
+          await Message.create({
+            conversationId: session.conversationId,
+            role: 'user',
+            text: session.sttBuffer.trim(),
+            createdAt: new Date(),
+          });
+        }
+        if (session.agentBuffer.trim()) {
+          await Message.create({
+            conversationId: session.conversationId,
+            role: 'agent',
+            text: session.agentBuffer.trim(),
+            createdAt: new Date(),
+          });
+        }
       } catch (e) {
-        console.error('Failed to save agent message:', e);
+        console.error('Failed to save merged messages:', e);
       }
     }
+
+    session.sttBuffer = '';
+    session.agentBuffer = '';
+    session.ws.send(JSON.stringify({ type: 'agent.complete' }));
   });
 
   session.provider.on('tts.audio', (event: any) => {
@@ -376,6 +404,7 @@ function setupProviderListeners(session: WSSession) {
       JSON.stringify({
         type: 'tts.audio',
         pcm16ChunkBase64: event.pcm16ChunkBase64,
+        sampleRate: event.sampleRate,
       })
     );
   });
@@ -411,4 +440,17 @@ function setupProviderListeners(session: WSSession) {
       })
     );
   });
+}
+
+
+function mergeCaption(prev: string, incomingRaw: string): string {
+  const incoming = (incomingRaw || '').trim();
+  if (!incoming) return prev;
+  if (!prev) return incoming;
+
+  if (incoming.startsWith(prev)) return incoming;
+  if (prev.startsWith(incoming)) return prev;
+
+  const joiner = /\s$/.test(prev) || /^\s/.test(incoming) ? '' : ' ';
+  return `${prev}${joiner}${incoming}`;
 }

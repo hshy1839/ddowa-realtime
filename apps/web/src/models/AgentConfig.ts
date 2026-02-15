@@ -8,6 +8,13 @@ const AgentConfigSchema = new mongoose.Schema(
     forbidden: [String],
     fallback: String,
     toolsEnabled: [String],
+    agentGender: { type: String, default: 'neutral' },
+    agentPersonality: { type: String, default: 'professional' },
+    companyName: String,
+    companyDescription: String,
+    companyPhone: String,
+    companyWebsite: String,
+    speechRate: { type: Number, default: 1.0 },
   },
   { timestamps: true }
 );

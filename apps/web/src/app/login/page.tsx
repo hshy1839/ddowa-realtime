@@ -8,15 +8,16 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [rememberMe, setRememberMe] = useState(true);
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       console.log('🔐 로그인 시도:', email);
-      const response = await api.post('/auth', { email, password, action: 'login' });
+      const response = await api.post('/auth', { email, password, action: 'login', rememberMe });
       console.log('✓ 로그인 성공:', response.data);
-      setAuthToken(response.data.token);
+      setAuthToken(response.data.token, rememberMe);
       console.log('📍 대시보드로 이동 시작...');
       
       // 라우터 이동
@@ -61,6 +62,16 @@ export default function LoginPage() {
               required
             />
           </div>
+
+          <label className="flex items-center gap-2 text-sm text-slate-200">
+            <input
+              type="checkbox"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              className="h-4 w-4"
+            />
+            로그인 유지
+          </label>
 
           {error && <div className="text-red-400 text-sm">{error}</div>}
 

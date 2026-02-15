@@ -13,10 +13,11 @@ function signToken(userId: string, email: string, workspaceId: string): string {
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { email, password, action } = body as {
+  const { email, password, action, rememberMe } = body as {
     email?: string;
     password?: string;
     action?: 'signup' | 'login';
+    rememberMe?: boolean;
   };
 
   if (!email || !password || !action) {
@@ -78,10 +79,11 @@ export async function POST(request: NextRequest) {
     const token = signToken(user._id.toString(), user.email, user.workspaceId.toString());
 
     const cookieStore = await cookies();
+    const loginRememberMe = rememberMe !== false;
     cookieStore.set('token', token, {
       httpOnly: true,
       sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60,
+      ...(loginRememberMe ? { maxAge: 7 * 24 * 60 * 60 } : {}),
       path: '/',
     });
 

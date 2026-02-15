@@ -1,433 +1,259 @@
 import { EventEmitter } from 'events';
-import axios from 'axios';
 import { IAgentProvider, AgentEvent, ToolResult } from './types';
-import { GeminiRealtimeClient } from './GeminiRealtimeClient';
+import { GeminiRealtimeClient, GeminiRealtimeEvent } from './GeminiRealtimeClient';
 
-/**
- * Google Gemini Multimodal Live API Provider
- * Real-time voice interaction with Gemini
- */
+type LiveAgentConfig = {
+  tone?: string;
+  rules?: string[];
+  forbidden?: string[];
+  fallback?: string;
+  toolsEnabled?: string[];
+  agentGender?: 'female' | 'male' | 'neutral';
+  agentPersonality?: string;
+  companyName?: string;
+  companyDescription?: string;
+  companyPhone?: string;
+  companyWebsite?: string;
+  speechRate?: number;
+};
+
 export class GeminiLiveProvider extends EventEmitter implements IAgentProvider {
-  private conversationId: string = '';
-  private config: any = {};
-  private apiKey: string = '';
-  private sessionId: string = '';
+  private conversationId = '';
+  private apiKey = '';
+  private sessionId = '';
   private messages: { role: 'user' | 'assistant'; content: string }[] = [];
-  private tools: any[] = [];
   private rt: GeminiRealtimeClient | null = null;
-  private realtimeEnabled: boolean = true;
+  private initialized = false;
+  private connected = false;
+
+  private lastSttFull = '';
+  private lastAgentFull = '';
+  private liveConfig: LiveAgentConfig = {};
 
   async initialize(config: any): Promise<void> {
-    this.config = config;
     this.apiKey = process.env.GEMINI_API_KEY || '';
-    // Realtime 완전 비활성화 - Fallback STT + generateContent API만 사용
-    this.realtimeEnabled = false;
-
     if (!this.apiKey) {
       throw new Error('GEMINI_API_KEY environment variable not set');
     }
 
-    // Setup tools from config
-    this.setupTools();
+    if (config) this.setAgentConfig(config);
 
-    // Realtime 연결 없음 - Mock 모드로 동작
-    console.log('✓ Gemini Live Provider initialized (Mock STT + generateContent API)');
+    this.rt = this.createRealtimeClient();
+    this.initialized = true;
+    console.log('✓ Gemini Live Provider initialized');
   }
 
-  private setupTools(): void {
-    // Define available tools
-    this.tools = [
-      {
-        name: 'getBusinessInfo',
-        description: 'Get business information and contact details',
-        parameters: {
-          type: 'object',
-          properties: {},
-          required: [],
-        },
-      },
-      {
-        name: 'listAvailability',
-        description: 'List available time slots for booking',
-        parameters: {
-          type: 'object',
-          properties: {
-            date: { type: 'string', description: 'Date in YYYY-MM-DD format' },
-          },
-          required: ['date'],
-        },
-      },
-      {
-        name: 'createBooking',
-        description: 'Create a booking for the customer',
-        parameters: {
-          type: 'object',
-          properties: {
-            startTime: { type: 'string', description: 'Start time in ISO format' },
-            endTime: { type: 'string', description: 'End time in ISO format' },
-            serviceName: { type: 'string', description: 'Name of service' },
-          },
-          required: ['startTime', 'endTime', 'serviceName'],
-        },
-      },
-      {
-        name: 'getPaymentLink',
-        description: 'Get payment link for the service',
-        parameters: {
-          type: 'object',
-          properties: {
-            amount: { type: 'number', description: 'Amount in USD' },
-          },
-          required: ['amount'],
-        },
-      },
-    ];
+  setAgentConfig(config: LiveAgentConfig): void {
+    this.liveConfig = { ...this.liveConfig, ...(config || {}) };
+  }
+
+  private createRealtimeClient(): GeminiRealtimeClient {
+    if (this.rt) {
+      try {
+        this.rt.removeAllListeners();
+      } catch {}
+      this.rt.disconnect();
+    }
+
+    const rt = new GeminiRealtimeClient({
+      apiKey: this.apiKey,
+      systemInstruction: this.buildSystemInstruction(),
+      voiceName: this.pickVoiceName(),
+    });
+
+    this.rt = rt;
+    this.connected = false;
+    this.bindRealtimeEvents(rt);
+    return rt;
+  }
+
+  private bindRealtimeEvents(rt: GeminiRealtimeClient): void {
+    rt.on('event', (event: GeminiRealtimeEvent) => {
+      switch (event.type) {
+        case 'open':
+          this.connected = true;
+          console.log('✓ [GeminiLive] connected');
+          break;
+
+        case 'setup.complete':
+          console.log('✓ [GeminiLive] setup complete');
+          break;
+
+        case 'stt.delta': {
+          const delta = this.extractDelta(event.textDelta, this.lastSttFull);
+          if (!delta) return;
+          this.lastSttFull = this.normalizeText(event.textDelta);
+          this.emit('stt.delta', { type: 'stt.delta', textDelta: delta } as AgentEvent);
+          break;
+        }
+
+        case 'agent.delta': {
+          const delta = this.extractDelta(event.textDelta, this.lastAgentFull);
+          if (!delta) return;
+          this.lastAgentFull = this.normalizeText(event.textDelta);
+          this.emit('agent.delta', { type: 'agent.delta', textDelta: delta } as AgentEvent);
+          break;
+        }
+
+        case 'tts.audio':
+          this.emit('tts.audio', {
+            type: 'tts.audio',
+            pcm16ChunkBase64: event.pcm16ChunkBase64,
+            sampleRate: event.sampleRate,
+          } as AgentEvent);
+          break;
+
+        case 'turn.complete':
+          if (this.lastSttFull.trim()) {
+            this.messages.push({ role: 'user', content: this.lastSttFull.trim() });
+          }
+          if (this.lastAgentFull.trim()) {
+            this.messages.push({ role: 'assistant', content: this.lastAgentFull.trim() });
+          }
+          this.lastSttFull = '';
+          this.lastAgentFull = '';
+          this.emit('agent.complete', { type: 'agent.complete' } as AgentEvent);
+          break;
+
+        case 'error':
+          this.emit('error', {
+            type: 'error',
+            code: 'GEMINI_LIVE_ERROR',
+            message: event.message,
+          } as AgentEvent);
+          break;
+
+        case 'close':
+          this.connected = false;
+          console.log(`[GeminiLive] closed code=${event.code} reason=${event.reason}`);
+          break;
+
+        case 'debug':
+          break;
+      }
+    });
   }
 
   async startConversation(conversationId: string): Promise<void> {
+    if (!this.initialized) {
+      throw new Error('GeminiLiveProvider not initialized');
+    }
+
     this.conversationId = conversationId;
-    this.messages = [];
-
-    // Generate a unique session ID for this conversation
     this.sessionId = `session_${Date.now()}`;
+    this.messages = [];
+    this.lastSttFull = '';
+    this.lastAgentFull = '';
 
-    // Keep text history for summarization / fallback.
-    const systemPrompt = this.buildSystemPrompt();
-    this.messages.push({ role: 'user', content: systemPrompt });
+    // 설정 변경이 즉시 반영되도록 call 시작 시마다 client 재생성
+    const rt = this.createRealtimeClient();
+    await rt.connect();
 
-    console.log(`Started conversation: ${conversationId}`);
+    console.log(`✓ Started Gemini Live conversation: ${conversationId}`);
   }
 
-  private buildSystemPrompt(): string {
-    return `You are a professional AI customer service agent. 
-    
-Your capabilities:
-- Answer customer questions about business information
-- Check availability and help with bookings
-- Provide payment options
-- Be polite, professional, and helpful
-
-Important: Only confirm bookings or provide payment details AFTER successfully calling the appropriate tools.
-Do not make promises about availability or bookings until the tool has been executed successfully.
-
-Always maintain a friendly and professional tone.`;
-  }
-
-  async sendAudioChunk(
-    pcm16ChunkBase64: string,
-    sampleRate: number,
-    seq: number
-  ): Promise<void> {
-    try {
-      // Fallback STT + Mock 응답 경로만 사용
-      console.log('🎙️ [SENDAUDIO] Using STT + Mock response path');
-      const audioData = Buffer.from(pcm16ChunkBase64, 'base64');
-      const userText = this.simulateSTT(audioData);
-      this.emit('stt.delta', { textDelta: userText });
-      await this.getGeminiResponse(userText);
-    } catch (error) {
-      console.error('Error sending audio chunk:', error);
-      this.emit('error', {
-        code: 'AUDIO_PROCESSING_ERROR',
-        message: 'Failed to process audio',
-      });
-    }
-  }
-
-  private simulateSTT(audioData: Buffer): string {
-    // PCM16 오디오 데이터로부터 간단한 음성 감지
-    const pcm16View = new Int16Array(audioData.buffer);
-    let sum = 0;
-    for (let i = 0; i < Math.min(pcm16View.length, 1000); i++) {
-      sum += Math.abs(pcm16View[i]);
-    }
-    const avgAmplitude = sum / Math.min(pcm16View.length, 1000);
-    
-    // 임계값 이상 감지되면 다양한 샘플 질문 중 선택
-    if (avgAmplitude > 1000) {
-      const samples = [
-        '안녕하세요. 상담받고 싶어요.',
-        '예약을 하고 싶습니다.',
-        '가격 정보를 알고 싶어요.',
-        '서비스에 대해 궁금합니다.',
-        '시간이 언제인가요?',
-        '오늘 예약 가능한가요?'
-      ];
-      return samples[Math.floor(Math.random() * samples.length)];
-    }
-    
-    // 낮은 음성은 일반 인사
-    return '안녕하세요.';
-  }
-
-  private async getGeminiResponse(userMessage: string): Promise<void> {
-    try {
-      this.messages.push({
-        role: 'user',
-        content: userMessage,
-      });
-
-      // Try to call real Gemini API first, fallback to mock if quota exceeded
-      try {
-        await this.callRealGeminiAPI(userMessage);
-      } catch (error: any) {
-        // If quota exceeded or API error, use mock response
-        if (error.response?.status === 429) {
-          console.warn('⚠️ Gemini API quota exceeded, using mock response');
-          const mockResponse = this.generateMockResponse(userMessage);
-          this.emit('agent.delta', { textDelta: mockResponse });
-          this.messages.push({
-            role: 'assistant',
-            content: mockResponse,
-          });
-          await this.synthesizeSpeech(mockResponse);
-        } else {
-          throw error;
-        }
-      }
-    } catch (error) {
-      console.error('Error getting response:', error);
-      this.emit('error', {
-        code: 'RESPONSE_ERROR',
-        message: 'Failed to get response',
-      });
-    }
-  }
-
-  private async callRealGeminiAPI(userMessage: string): Promise<void> {
-    try {
-      // API 할당량 초과 시 mock 사용
-      console.log('⚠️ [API] Gemini API 호출 비활성화 - Mock 응답 사용');
-      const mockResponse = this.generateMockResponse(userMessage);
-      this.emit('agent.delta', { textDelta: mockResponse });
-      this.messages.push({
-        role: 'assistant',
-        content: mockResponse,
-      });
-      await this.synthesizeSpeech(mockResponse);
-      return;
-
-      // 주석: 실제 API 호출 (할당량 복구 후 사용)
-      const response = await axios.post(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-native-audio-latest:generateContent?key=${this.apiKey}`,
-        {
-          contents: this.messages.map((m) => ({
-            role: m.role === 'user' ? 'user' : 'model',
-            parts: [
-              {
-                text: m.content,
-              },
-            ],
-          })),
-          tools: [
-            {
-              function_declarations: this.tools,
-            },
-          ],
-          systemInstruction: {
-            parts: [
-              {
-                text: this.buildSystemPrompt(),
-              },
-            ],
-          },
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-
-      const content = response.data.candidates?.[0]?.content;
-      if (!content) {
-        console.warn('No response from Gemini:', response.data);
-        this.emit('agent.delta', { textDelta: 'I understand. How can I help you further?' });
-        return;
-      }
-
-      // Process response parts
-      let responseText = '';
-      for (const part of content.parts || []) {
-        if (part.text) {
-          responseText = part.text;
-          // Emit agent text delta
-          this.emit('agent.delta', { textDelta: responseText });
-          this.messages.push({
-            role: 'assistant',
-            content: responseText,
-          });
-        } else if (part.functionCall) {
-          // Handle tool call
-          await this.handleToolCall(part.functionCall);
-        }
-      }
-
-      // Simulate TTS (text-to-speech)
-      if (responseText) {
-        await this.synthesizeSpeech(responseText);
-      }
-    } catch (error) {
-      console.error('Real Gemini API Error:', error);
-      throw error; // Re-throw to trigger fallback
-    }
-  }
-
-  private generateMockResponse(userMessage: string): string {
-    // Smart mock responses based on user input
-    const lower = userMessage.toLowerCase();
-    
-    if (lower.includes('book') || lower.includes('appointment') || lower.includes('schedule')) {
-      return 'I can help you book an appointment. Could you please let me know your preferred date and time?';
-    } else if (lower.includes('available') || lower.includes('time') || lower.includes('when')) {
-      return 'We have several time slots available. What day would work best for you?';
-    } else if (lower.includes('price') || lower.includes('cost') || lower.includes('pay')) {
-      return 'Our services are competitively priced. Let me show you our pricing options.';
-    } else if (lower.includes('hello') || lower.includes('hi') || lower.includes('greet')) {
-      return 'Hello! Welcome to our customer service. How can I assist you today?';
-    } else if (lower.includes('thank') || lower.includes('thanks')) {
-      return 'You\'re welcome! Is there anything else I can help you with?';
-    } else {
-      return 'Thank you for your message. I understand you\'re inquiring about our services. How can I best assist you?';
-    }
-  }
-
-  private async handleToolCall(functionCall: any): Promise<void> {
-    const { name, args } = functionCall;
-
-    this.emit('tool.call', {
-      toolCallId: `tool_${Date.now()}`,
-      toolName: name,
-      toolArgs: args,
-    });
-
-    // Tool will be executed by the WebSocket handler
-    // We'll receive the result via sendToolResult()
-  }
-
-  private async synthesizeSpeech(text: string): Promise<void> {
-    try {
-      // Google Cloud Text-to-Speech API를 통해 음성 생성
-      const ttsResponse = await axios.post(
-        `https://texttospeech.googleapis.com/v1/text:synthesize?key=${this.apiKey}`,
-        {
-          input: {
-            text: text,
-          },
-          voice: {
-            languageCode: 'ko-KR',
-            name: 'ko-KR-Standard-A',
-          },
-          audioConfig: {
-            audioEncoding: 'LINEAR16',
-            sampleRateHertz: 16000,
-          },
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-
-      const audioContent = ttsResponse.data.audioContent;
-      if (audioContent) {
-        console.log(`🔊 [TTS] Generated audio: ${(audioContent.length / 2 / 16000).toFixed(2)}s`);
-        this.emit('tts.audio', {
-          type: 'tts.audio',
-          pcm16ChunkBase64: audioContent,
-        });
-      }
-    } catch (error: any) {
-      // TTS 실패 시 로그만 기록하고 계속 진행
-      console.warn('⚠️ TTS 생성 실패:', error.response?.data?.error?.message || error.message);
-    }
+  async sendAudioChunk(pcm16ChunkBase64: string, sampleRate: number, _seq: number): Promise<void> {
+    if (!this.rt || !this.connected) return;
+    this.rt.sendAudioChunk(pcm16ChunkBase64, sampleRate);
   }
 
   async endConversation(): Promise<{ summary: string; intent: string }> {
-    try {
-      // Generate summary using Gemini
-      const conversationText = this.messages.map((m) => `${m.role}: ${m.content}`).join('\n');
-
-      try {
-        const response = await axios.post(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-native-audio-latest:generateContent?key=${this.apiKey}`,
-          {
-            contents: [
-              {
-                role: 'user',
-                parts: [
-                  {
-                    text: `Please summarize this conversation and identify the customer's intent in 1-2 sentences each.\n\nConversation:\n${conversationText}`,
-                  },
-                ],
-              },
-            ],
-          },
-          {
-            headers: {
-              'Content-Type': 'application/json',
-            },
-          }
-        );
-
-        const responseText = response.data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-
-        // Parse summary and intent from response
-        const summary = responseText.split('Intent:')[0].replace('Summary:', '').trim() || 'Conversation completed';
-        const intent = (responseText.split('Intent:')[1] || 'general_inquiry').trim().toLowerCase().replace(/[^a-z_]/g, '_');
-
-        return { summary, intent };
-      } catch (summaryError: any) {
-        // Handle rate limiting (429) and other errors gracefully
-        if (summaryError.response?.status === 429) {
-          console.warn('⚠️ [RATE_LIMITED] Status 429 - skipping summary generation');
-        } else {
-          console.error('❌ [SUMMARY_ERROR]:', summaryError.message);
-        }
-        return {
-          summary: 'Conversation completed',
-          intent: 'general_inquiry',
-        };
-      }
-    } catch (error) {
-      console.error('Error ending conversation:', error);
-      return {
-        summary: 'Conversation completed',
-        intent: 'unknown',
-      };
-    }
+    const summary = this.messages.map((m) => `${m.role}: ${m.content}`).join('\n');
+    return {
+      summary,
+      intent: 'customer_inquiry',
+    };
   }
 
-  async sendToolResult(result: ToolResult): Promise<void> {
-    // In a real Gemini Live implementation, send tool result back
-    // This allows the agent to make decisions based on tool outcomes
-    const toolResultMessage = `Tool ${result.toolCallId} executed: ${JSON.stringify(result.result)}`;
-
-    this.messages.push({
-      role: 'assistant',
-      content: toolResultMessage,
-    });
-
-    // Continue conversation with tool result
-    await this.getGeminiResponse(toolResultMessage);
+  async sendToolResult(_result: ToolResult): Promise<void> {
+    // Reserved for future function/tool round-trips in Live API.
   }
 
   on(event: AgentEvent['type'], callback: (event: AgentEvent) => void): this {
-    return (super.on(event, callback) as any);
+    return super.on(event, callback) as this;
   }
 
   off(event: AgentEvent['type'], callback: (event: AgentEvent) => void): this {
-    return (super.off(event, callback) as any);
+    return super.off(event, callback) as this;
   }
 
   async disconnect(): Promise<void> {
-    try {
-      this.rt?.disconnect();
-    } catch {
-      // ignore
-    }
-    this.rt = null;
     this.removeAllListeners();
+    if (this.rt) {
+      this.rt.disconnect();
+      try {
+        this.rt.removeAllListeners();
+      } catch {}
+    }
+    this.connected = false;
+    this.messages = [];
+    this.lastSttFull = '';
+    this.lastAgentFull = '';
+  }
+
+  private normalizeText(text?: string): string {
+    return (text || '').replace(/\s+/g, ' ').trim();
+  }
+
+  private extractDelta(nextRaw: string, prevRaw: string): string {
+    const next = this.normalizeText(nextRaw);
+    const prev = this.normalizeText(prevRaw);
+
+    if (!next) return '';
+    if (!prev) return next;
+    if (next === prev) return '';
+
+    if (next.startsWith(prev)) {
+      return next.slice(prev.length).trimStart();
+    }
+
+    return next;
+  }
+
+  private pickVoiceName(): string {
+    switch (this.liveConfig.agentGender) {
+      case 'female':
+        return 'Kore';
+      case 'male':
+        return 'Puck';
+      default:
+        return 'Aoede';
+    }
+  }
+
+  private buildSystemInstruction(): string {
+    const tone = this.liveConfig.tone || 'professional';
+    const personality = this.liveConfig.agentPersonality || 'professional';
+
+    const companyLines = [
+      this.liveConfig.companyName ? `회사명: ${this.liveConfig.companyName}` : '',
+      this.liveConfig.companyDescription ? `회사 소개: ${this.liveConfig.companyDescription}` : '',
+      this.liveConfig.companyPhone ? `대표전화: ${this.liveConfig.companyPhone}` : '',
+      this.liveConfig.companyWebsite ? `웹사이트: ${this.liveConfig.companyWebsite}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    const rules = (this.liveConfig.rules || []).filter(Boolean);
+    const forbidden = (this.liveConfig.forbidden || []).filter(Boolean);
+
+    const speed = Math.min(1.2, Math.max(0.8, Number(this.liveConfig.speechRate ?? 1.0) || 1.0));
+    const speedGuide = speed < 0.95 ? '천천히 또박또박' : speed > 1.05 ? '조금 빠르고 경쾌하게' : '기본 속도로 자연스럽게';
+
+    return [
+      '당신은 한국어 전화 상담사입니다.',
+      `응답 톤: ${tone}`,
+      `상담사 성격: ${personality}`,
+      `말하기 스타일: ${speedGuide}`,
+      companyLines ? `\n[회사 정보]\n${companyLines}` : '',
+      rules.length ? `\n[반드시 지킬 규칙]\n- ${rules.join('\n- ')}` : '',
+      forbidden.length ? `\n[금지 주제]\n- ${forbidden.join('\n- ')}` : '',
+      this.liveConfig.fallback
+        ? `\n질문에 답할 수 없으면 다음 문장 스타일로 안내: "${this.liveConfig.fallback}"`
+        : '',
+      '\n불필요한 메타설명 없이 자연스럽고 짧게 답하세요.',
+    ]
+      .filter(Boolean)
+      .join('\n');
   }
 }

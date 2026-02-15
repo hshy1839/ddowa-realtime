@@ -16,6 +16,22 @@ const AgentConfigSchema = new mongoose.Schema(
     forbidden: [String], // Topics/keywords to avoid
     fallback: String, // Fallback message when unable to help
     toolsEnabled: [String], // Which tools are enabled: getBusinessInfo, listAvailability, createBooking, etc.
+    agentGender: {
+      type: String,
+      default: 'neutral',
+    },
+    agentPersonality: {
+      type: String,
+      default: 'professional',
+    },
+    companyName: String,
+    companyDescription: String,
+    companyPhone: String,
+    companyWebsite: String,
+    speechRate: {
+      type: Number,
+      default: 1.0,
+    },
   },
   { timestamps: true }
 );

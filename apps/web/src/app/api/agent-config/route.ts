@@ -13,10 +13,17 @@ export async function GET(_request: NextRequest) {
     return NextResponse.json({
       config: config || {
         tone: 'professional',
-        rules: ['Be polite', 'Be helpful'],
+        rules: ['친절하고 정확하게 답변하세요'],
         forbidden: [],
-        fallback: 'I cannot help with that',
+        fallback: '죄송합니다. 해당 내용은 확인 후 다시 안내드릴게요.',
         toolsEnabled: ['getBusinessInfo', 'listAvailability', 'createBooking', 'getPaymentLink'],
+        agentGender: 'neutral',
+        agentPersonality: 'professional',
+        companyName: '',
+        companyDescription: '',
+        companyPhone: '',
+        companyWebsite: '',
+        speechRate: 1.0,
       },
     });
   } catch (e: any) {

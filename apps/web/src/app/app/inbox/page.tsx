@@ -15,6 +15,7 @@ interface Conversation {
 export default function InboxPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchConversations();
@@ -27,6 +28,30 @@ export default function InboxPage() {
       setConversations(data.conversations);
     } catch (error) {
       console.error('Failed to fetch conversations:', error);
+    }
+  };
+
+  const deleteConversation = async (conversationId: string) => {
+    try {
+      setDeletingId(conversationId);
+      const res = await fetch('/api/conversations', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || '삭제에 실패했습니다.');
+      }
+
+      setConversations((prev) => prev.filter((c) => c._id !== conversationId));
+      setSelectedId((prev) => (prev === conversationId ? null : prev));
+    } catch (error) {
+      console.error('Failed to delete conversation:', error);
+      alert('메시지 삭제에 실패했습니다.');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -48,9 +73,24 @@ export default function InboxPage() {
                   : 'bg-slate-800 border-slate-700 hover:border-slate-600'
               }`}
             >
-              <p className="font-semibold">{conv.intent || '상담'}</p>
-              <p className="text-sm text-slate-400">{new Date(conv.startedAt).toLocaleString()}</p>
-              <p className="text-sm text-slate-400">{conv.durationSec}초</p>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-semibold">{conv.intent || '상담'}</p>
+                  <p className="text-sm text-slate-400">{new Date(conv.startedAt).toLocaleString()}</p>
+                  <p className="text-sm text-slate-400">{conv.durationSec}초</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteConversation(conv._id);
+                  }}
+                  disabled={deletingId === conv._id}
+                  className="px-2 py-1 text-xs rounded bg-red-600 hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {deletingId === conv._id ? '삭제중...' : '삭제'}
+                </button>
+              </div>
             </div>
           ))}
         </div>
