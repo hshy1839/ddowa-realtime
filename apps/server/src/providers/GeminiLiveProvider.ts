@@ -228,7 +228,6 @@ export class GeminiLiveProvider extends EventEmitter implements IAgentProvider {
     const companyLines = [
       this.liveConfig.companyName ? `회사명: ${this.liveConfig.companyName}` : '',
       this.liveConfig.companyDescription ? `회사 소개: ${this.liveConfig.companyDescription}` : '',
-      this.liveConfig.companyPhone ? `대표전화: ${this.liveConfig.companyPhone}` : '',
       this.liveConfig.companyWebsite ? `웹사이트: ${this.liveConfig.companyWebsite}` : '',
     ]
       .filter(Boolean)
@@ -246,11 +245,13 @@ export class GeminiLiveProvider extends EventEmitter implements IAgentProvider {
       `상담사 성격: ${personality}`,
       `말하기 스타일: ${speedGuide}`,
       companyLines ? `\n[회사 정보]\n${companyLines}` : '',
+      '예약 관련 문의에서 고객을 대표전화로 돌리지 마세요. 전화번호는 고객 식별값으로 받아서 시스템에서 직접 예약 조회/추가/변경/취소를 처리하세요.',
       rules.length ? `\n[반드시 지킬 규칙]\n- ${rules.join('\n- ')}` : '',
       forbidden.length ? `\n[금지 주제]\n- ${forbidden.join('\n- ')}` : '',
       this.liveConfig.fallback
         ? `\n질문에 답할 수 없으면 다음 문장 스타일로 안내: "${this.liveConfig.fallback}"`
         : '',
+      '\n예약 관련 요청(조회/추가/변경/취소)이 들어오면 고객 전화번호를 반드시 확인해서 처리하도록 안내하세요. 날짜/시간이 없으면 YYYY-MM-DD HH:mm 형식으로 다시 물어보세요.',
       '\n불필요한 메타설명 없이 자연스럽고 짧게 답하세요.',
     ]
       .filter(Boolean)

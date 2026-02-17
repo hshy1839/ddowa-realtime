@@ -23,51 +23,46 @@ async function findOrCreateContact(workspaceId: string, phoneRaw?: string) {
   return contact;
 }
 
-export async function GET(_request: NextRequest) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const token = await requireAuth();
     await connectMongo();
 
-    const raw = await Booking.find({ workspaceId: token.workspaceId })
-      .populate('contactId', 'phone name')
-      .sort({ startAt: -1 })
-      .limit(200)
-      .lean();
+    const { id } = await params;
+    const body = await request.json();
+    const { startAt, endAt, serviceName, memo, status, phone } = body || {};
 
-    const bookings = raw.map((b: any) => ({
-      ...b,
-      phone: b?.contactId?.phone || '',
-      contactName: b?.contactId?.name || '',
-    }));
+    const contact = await findOrCreateContact(token.workspaceId, phone);
 
-    return NextResponse.json({ bookings });
+    const booking = await Booking.findOneAndUpdate(
+      { _id: id, workspaceId: token.workspaceId },
+      {
+        ...(startAt ? { startAt: new Date(startAt) } : {}),
+        ...(endAt ? { endAt: new Date(endAt) } : {}),
+        ...(serviceName !== undefined ? { serviceName } : {}),
+        ...(memo !== undefined ? { memo } : {}),
+        ...(status ? { status } : {}),
+        ...(phone !== undefined ? { contactId: contact?._id || undefined } : {}),
+      },
+      { new: true }
+    ).lean();
+
+    if (!booking) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    return NextResponse.json({ booking });
   } catch (e: any) {
     if (e?.message === 'UNAUTHORIZED') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 }
 
-export async function POST(request: NextRequest) {
+export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const token = await requireAuth();
     await connectMongo();
 
-    const body = await request.json();
-    const { startAt, endAt, serviceName, memo, status, phone } = body || {};
-
-    const contact = await findOrCreateContact(token.workspaceId, phone);
-
-    const booking = await Booking.create({
-      workspaceId: token.workspaceId,
-      contactId: contact?._id,
-      startAt: new Date(startAt),
-      endAt: new Date(endAt),
-      serviceName,
-      memo,
-      status,
-    });
-
-    return NextResponse.json({ booking });
+    const { id } = await params;
+    const res = await Booking.deleteOne({ _id: id, workspaceId: token.workspaceId });
+    return NextResponse.json({ success: res.deletedCount === 1 });
   } catch (e: any) {
     if (e?.message === 'UNAUTHORIZED') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });

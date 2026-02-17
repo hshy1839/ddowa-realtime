@@ -2,7 +2,7 @@ import { WebSocket } from 'ws';
 import axios from 'axios';
 import { IAgentProvider } from '../providers/types';
 import { GeminiLiveProvider } from '../providers/GeminiLiveProvider';
-import { AgentConfig, Conversation, Message, Workspace } from '../models';
+import { AgentConfig, Booking, Contact, Conversation, Message, Workspace } from '../models';
 import { executeToolCall } from './tools';
 import { IParsedToken } from '../lib/jwt';
 
@@ -370,6 +370,12 @@ function setupProviderListeners(session: WSSession) {
   session.provider.on('agent.complete', async () => {
     console.log(`✓ [AGENT.COMPLETE] Agent response complete`);
 
+    const bookingAssistantReply = await handleBookingCrudByPhone(session, session.sttBuffer);
+    if (bookingAssistantReply) {
+      session.agentBuffer = mergeCaption(session.agentBuffer, bookingAssistantReply);
+      session.ws.send(JSON.stringify({ type: 'agent.delta', textDelta: bookingAssistantReply }));
+    }
+
     if (session.conversationId) {
       try {
         if (session.sttBuffer.trim()) {
@@ -453,4 +459,142 @@ function mergeCaption(prev: string, incomingRaw: string): string {
 
   const joiner = /\s$/.test(prev) || /^\s/.test(incoming) ? '' : ' ';
   return `${prev}${joiner}${incoming}`;
+}
+
+
+function normalizePhone(input: string): string {
+  return (input || '').replace(/\D/g, '');
+}
+
+function extractPhone(text: string): string | null {
+  const m = text.match(/01[0-9][\s-]?[0-9]{3,4}[\s-]?[0-9]{4}/);
+  return m ? normalizePhone(m[0]) : null;
+}
+
+function extractDateTimes(text: string): Date[] {
+  const out: Date[] = [];
+  const now = new Date();
+
+  // 1) YYYY-MM-DD HH:mm
+  const fullRegex = /(20\d{2})[.\/-](\d{1,2})[.\/-](\d{1,2})\s*(\d{1,2})[:시](\d{1,2})?/g;
+  let m: RegExpExecArray | null;
+  while ((m = fullRegex.exec(text)) !== null) {
+    const [_, y, mo, d, h, mi] = m;
+    const dt = new Date(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi || 0));
+    if (!Number.isNaN(dt.getTime())) out.push(dt);
+  }
+
+  // 2) M월 D일 H시(분 optional)
+  const mdRegex = /(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*(오전|오후)?\s*(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분?)?/g;
+  while ((m = mdRegex.exec(text)) !== null) {
+    const [_, mo, d, ampm, hRaw, miRaw] = m;
+    let h = Number(hRaw);
+    if (ampm === '오후' && h < 12) h += 12;
+    if (ampm === '오전' && h === 12) h = 0;
+    const dt = new Date(now.getFullYear(), Number(mo) - 1, Number(d), h, Number(miRaw || 0));
+    if (dt.getTime() < now.getTime()) dt.setFullYear(now.getFullYear() + 1);
+    if (!Number.isNaN(dt.getTime())) out.push(dt);
+  }
+
+  // 3) 상대 날짜(오늘/내일/모레) + 시간
+  const relRegex = /(오늘|내일|모레)\s*(오전|오후)?\s*(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분?)?/g;
+  while ((m = relRegex.exec(text)) !== null) {
+    const [_, dayWord, ampm, hRaw, miRaw] = m;
+    let h = Number(hRaw);
+    if (ampm === '오후' && h < 12) h += 12;
+    if (ampm === '오전' && h === 12) h = 0;
+
+    const dayOffset = dayWord === '내일' ? 1 : dayWord === '모레' ? 2 : 0;
+    const dt = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset, h, Number(miRaw || 0));
+    if (!Number.isNaN(dt.getTime())) out.push(dt);
+  }
+
+  // 4) M/D H:mm
+  const slashRegex = /(\d{1,2})[\/-](\d{1,2})\s*(오전|오후)?\s*(\d{1,2})[:시](\d{1,2})?/g;
+  while ((m = slashRegex.exec(text)) !== null) {
+    const [_, mo, d, ampm, hRaw, miRaw] = m;
+    let h = Number(hRaw);
+    if (ampm === '오후' && h < 12) h += 12;
+    if (ampm === '오전' && h === 12) h = 0;
+    const dt = new Date(now.getFullYear(), Number(mo) - 1, Number(d), h, Number(miRaw || 0));
+    if (dt.getTime() < now.getTime()) dt.setFullYear(now.getFullYear() + 1);
+    if (!Number.isNaN(dt.getTime())) out.push(dt);
+  }
+
+  return out.sort((a, b) => a.getTime() - b.getTime());
+}
+
+async function findOrCreateContactByPhone(workspaceId: string, phoneDigits: string) {
+  let contact = await Contact.findOne({ workspaceId, phone: new RegExp(phoneDigits.slice(-8) + '$') });
+  if (!contact) {
+    contact = await Contact.create({ workspaceId, name: '고객', phone: phoneDigits, lastSeenAt: new Date() });
+  }
+  return contact;
+}
+
+async function handleBookingCrudByPhone(session: WSSession, userTextRaw: string): Promise<string | null> {
+  const userText = (userTextRaw || '').trim();
+  if (!userText) return null;
+
+  const hasBookingWord = /(예약|일정|스케줄|조회|확인|내역|추가|생성|등록|수정|변경|취소|삭제)/.test(userText);
+  if (!hasBookingWord) return null;
+
+  const phone = extractPhone(userText);
+  if (!phone) {
+    return '예약 처리를 위해 고객 전화번호(예: 010-1234-5678)를 함께 말씀해 주세요.';
+  }
+
+  const isRead = /(조회|확인|내역|보여)/.test(userText);
+  const isCreate = /(추가|생성|등록|잡아|해줘)/.test(userText) && !/(수정|변경|취소|삭제|조회|확인|내역)/.test(userText);
+  const isUpdate = /(수정|변경)/.test(userText);
+  const isDelete = /(취소|삭제)/.test(userText);
+
+  const contact = await findOrCreateContactByPhone(session.workspaceId, phone);
+
+  if (isRead) {
+    const list = await Booking.find({ workspaceId: session.workspaceId, contactId: contact._id }).sort({ startAt: 1 }).limit(5).lean();
+    if (!list.length) return `전화번호 ${phone} 기준 예약 내역이 없습니다.`;
+    const lines = list.map((b: any, i: number) => `${i + 1}) ${new Date(b.startAt).toLocaleString('ko-KR')} ~ ${new Date(b.endAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} (${b.status})`);
+    return `전화번호 ${phone} 예약 내역입니다.\n` + lines.join('\n');
+  }
+
+  if (isCreate) {
+    const dts = extractDateTimes(userText);
+    if (!dts.length) return '예약 추가할 날짜/시간을 말씀해 주세요. 예: 내일 오후 3시 / 2월 18일 14시';
+    const startAt = dts[0];
+    const endAt = new Date(startAt.getTime() + 30 * 60 * 1000);
+    const booking = await Booking.create({
+      workspaceId: session.workspaceId,
+      contactId: contact._id,
+      startAt,
+      endAt,
+      serviceName: '전화 상담',
+      status: 'confirmed',
+      memo: `phone:${phone}`,
+    });
+    return `예약을 등록했습니다. (${new Date(booking.startAt).toLocaleString('ko-KR')})`;
+  }
+
+  if (isUpdate) {
+    const dts = extractDateTimes(userText);
+    const target = await Booking.findOne({ workspaceId: session.workspaceId, contactId: contact._id, status: { $ne: 'cancelled' } }).sort({ startAt: 1 });
+    if (!target) return `변경할 예약이 없습니다. 전화번호 ${phone} 기준 예약 내역을 먼저 확인해 주세요.`;
+    if (!dts.length) return '예약 변경할 새 날짜/시간을 말씀해 주세요. 예: 모레 16시 / 3월 1일 오후 2시';
+    const newStart = dts[dts.length - 1];
+    const newEnd = new Date(newStart.getTime() + 30 * 60 * 1000);
+    target.startAt = newStart;
+    target.endAt = newEnd;
+    await target.save();
+    return `예약 시간을 변경했습니다. (${newStart.toLocaleString('ko-KR')})`;
+  }
+
+  if (isDelete) {
+    const target = await Booking.findOne({ workspaceId: session.workspaceId, contactId: contact._id, status: { $ne: 'cancelled' } }).sort({ startAt: 1 });
+    if (!target) return `취소할 예약이 없습니다. 전화번호 ${phone} 기준 예약 내역이 비어 있습니다.`;
+    target.status = 'cancelled';
+    await target.save();
+    return `예약을 취소했습니다. (${new Date(target.startAt).toLocaleString('ko-KR')})`;
+  }
+
+  return null;
 }

@@ -272,15 +272,15 @@ export default function PublicCallPage() {
   };
 
   return (
-    <div className="h-screen overflow-y-auto bg-gradient-to-b from-slate-900 to-slate-800 text-white p-6">
+    <div className="h-screen overflow-y-auto bg-[#f7f7f7] text-black p-4 sm:p-6">
       <div className="max-w-4xl mx-auto mb-8">
         <h1 className="text-3xl font-bold mb-2">🤖 Tohwa AI 상담</h1>
-        <p className="text-slate-400">실시간 음성 상담 및 자막 서비스</p>
+        <p className="text-black/55">실시간 음성 상담 및 자막 서비스</p>
         <p className="text-xs text-slate-500 mt-1">상담사 음성 속도: {speechRate.toFixed(2)}x</p>
         <div className="mt-3 flex gap-2">
           <button
             onClick={handleDeleteReceived}
-            className="px-3 py-1.5 text-xs rounded bg-rose-600/80 hover:bg-rose-600 transition"
+            className="px-3 py-1.5 text-xs rounded-xl border border-black/20 hover:bg-black hover:text-white transition"
           >
             받은 메시지 삭제
           </button>
@@ -288,17 +288,17 @@ export default function PublicCallPage() {
       </div>
 
       <div className="max-w-4xl mx-auto">
-        <div className="bg-slate-800 border border-slate-700 rounded-lg p-6 mb-6">
+        <div className="bg-white border border-black/10 rounded-2xl p-5 mb-4">
           <div className="mb-4 flex justify-between items-center">
             <div>
-              <span className="text-slate-400">상태: </span>
+              <span className="text-black/55">상태: </span>
               <span
                 className={`font-bold ${
                   wsStatus.includes('✓') && wsStatus.includes('연결')
-                    ? 'text-green-400'
+                    ? 'text-green-600'
                     : wsStatus.includes('오류')
                     ? 'text-red-400'
-                    : 'text-yellow-400'
+                    : 'text-black'
                 }`}
               >
                 {wsStatus}
@@ -310,13 +310,13 @@ export default function PublicCallPage() {
           </div>
 
           {conversationId && (
-            <div className="text-sm text-slate-400">
+            <div className="text-sm text-black/55">
               대화 ID: <span className="text-cyan-400">{conversationId.slice(0, 12)}...</span>
             </div>
           )}
         </div>
 
-        <div className="bg-slate-800 border border-slate-700 rounded-lg p-6 mb-6">
+        <div className="bg-white border border-black/10 rounded-2xl p-5 mb-4">
           <div className="flex gap-3 mb-4">
             <button
               onClick={handleStartCall}
@@ -336,7 +336,7 @@ export default function PublicCallPage() {
 
           {isCallActive && (
             <div className="mb-4">
-              <div className="text-sm text-slate-400 mb-2">마이크 레벨</div>
+              <div className="text-sm text-black/55 mb-2">마이크 레벨</div>
               <div className="bg-slate-700 rounded-full h-2 overflow-hidden">
                 <div className="bg-green-500 h-full transition-all" style={{ width: `${volumeLevel}%` }} />
               </div>
@@ -347,17 +347,17 @@ export default function PublicCallPage() {
         </div>
 
         <div className="space-y-6">
-          <div className="bg-blue-900/30 border border-blue-700/50 rounded-lg p-6">
+          <div className="bg-white border border-black/10 rounded-2xl p-5">
             <h2 className="text-lg font-semibold mb-4 text-blue-300">👤 사용자</h2>
-            <div className="min-h-20 max-h-40 overflow-y-auto bg-slate-900 p-4 rounded">
-              <p className="text-white text-lg">{userCaption || <span className="text-slate-500">음성을 인식 중입니다...</span>}</p>
+            <div className="min-h-20 max-h-40 overflow-y-auto bg-black/[0.03] p-4 rounded-xl">
+              <p className="text-black text-lg">{userCaption || <span className="text-slate-500">음성을 인식 중입니다...</span>}</p>
             </div>
           </div>
 
-          <div className="bg-purple-900/30 border border-purple-700/50 rounded-lg p-6">
+          <div className="bg-white border border-black/10 rounded-2xl p-5">
             <h2 className="text-lg font-semibold mb-4 text-purple-300">🤖 상담사 AI</h2>
-            <div className="min-h-20 max-h-40 overflow-y-auto bg-slate-900 p-4 rounded">
-              <p className="text-white text-lg">
+            <div className="min-h-20 max-h-40 overflow-y-auto bg-black/[0.03] p-4 rounded-xl">
+              <p className="text-black text-lg">
                 {agentCaption || <span className="text-slate-500">응답을 기다리는 중입니다...</span>}
                 {agentCaption && <span className="animate-pulse">▌</span>}
               </p>
@@ -366,9 +366,9 @@ export default function PublicCallPage() {
         </div>
 
         {captions.length > 0 && (
-          <div className="bg-slate-800 border border-slate-700 rounded-lg p-6 mt-6">
+          <div className="bg-white border border-black/10 rounded-2xl p-5 mt-5">
             <h2 className="text-lg font-semibold mb-4">📋 대화 기록</h2>
-            <div className="bg-slate-900 p-4 rounded h-96 overflow-y-auto space-y-4">
+            <div className="bg-[#eef2f5] p-4 rounded-xl h-96 overflow-y-auto space-y-4">
               {captions.map((caption) => (
                 <div
                   key={caption.id}
@@ -376,7 +376,7 @@ export default function PublicCallPage() {
                     caption.role === 'user' ? 'bg-blue-900/40 border-l-4 border-blue-500' : 'bg-purple-900/40 border-l-4 border-purple-500'
                   }`}
                 >
-                  <div className="flex items-center justify-between text-sm font-semibold text-slate-400 mb-1">
+                  <div className="flex items-center justify-between text-sm font-semibold text-black/55 mb-1">
                     <span>{caption.role === 'user' ? '👤 사용자' : '🤖 상담사'}</span>
                     <button
                       onClick={() => handleDeleteCaption(caption.id)}
@@ -385,14 +385,14 @@ export default function PublicCallPage() {
                       삭제
                     </button>
                   </div>
-                  <div className="text-white break-words">{caption.text}</div>
+                  <div className="text-black break-words">{caption.text}</div>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        <div className="mt-6 p-4 bg-blue-900/50 border border-blue-700/50 rounded-lg text-sm text-slate-300">
+        <div className="mt-6 p-4 bg-white border border-black/10 rounded-xl text-sm text-black/70">
           <p>
             💡 <strong>팁:</strong> 상담 시작 후 말하면 사용자 자막이 올라오고, AI 음성/자막이 실시간으로 이어집니다.
           </p>
