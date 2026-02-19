@@ -79,12 +79,11 @@ async function main() {
         return res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response><Say>등록되지 않은 Twilio 번호입니다.</Say></Response>');
       }
 
-      const publicBase = (process.env.TWILIO_PUBLIC_BASE_URL || '').trim();
       const explicitStream = (process.env.TWILIO_STREAM_WSS_URL || '').trim();
 
       let streamUrl = explicitStream;
       if (!streamUrl) {
-        const base = publicBase || `${(req.headers['x-forwarded-proto'] as string) || 'https'}://${req.headers.host}`;
+        const base = `${(req.headers['x-forwarded-proto'] as string) || 'https'}://${req.headers.host}`;
         const u = new URL(base);
         u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:';
         u.pathname = '/twilio/media';
