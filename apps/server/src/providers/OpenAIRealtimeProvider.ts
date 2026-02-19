@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { IAgentProvider, AgentEvent, ToolResult } from './types';
+import { IAgentProvider, AgentEvent, ToolResult } from './types.js';
 
 /**
  * OpenAI Realtime API Provider - Skeleton implementation

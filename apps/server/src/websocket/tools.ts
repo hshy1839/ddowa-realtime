@@ -1,5 +1,5 @@
-import { IAgentProvider, ToolResult } from '../providers/types';
-import { Conversation, Booking, Contact } from '../models';
+import { IAgentProvider, ToolResult } from '../providers/types.js';
+import { Conversation, Booking, Contact } from '../models/index.js';
 
 export async function executeToolCall(
   toolName: string,

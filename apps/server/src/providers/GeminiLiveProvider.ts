@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
-import { IAgentProvider, AgentEvent, ToolResult } from './types';
-import { GeminiRealtimeClient, GeminiRealtimeEvent } from './GeminiRealtimeClient';
+import { IAgentProvider, AgentEvent, ToolResult } from './types.js';
+import { GeminiRealtimeClient, GeminiRealtimeEvent } from './GeminiRealtimeClient.js';
 
 type LiveAgentConfig = {
   tone?: string;

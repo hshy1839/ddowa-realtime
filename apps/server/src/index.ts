@@ -4,11 +4,11 @@ import { WebSocketServer } from 'ws';
 import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
-import { connectMongo } from './lib/mongo';
-import { verifyToken } from './lib/jwt';
-import { handleWSConnection } from './websocket/handler';
-import { User, Workspace } from './models';
-import { buildTwimlStreamResponse, findWorkspaceByTwilioNumber, handleTwilioMediaWS, isTwilioMediaPath } from './twilio';
+import { connectMongo } from './lib/mongo.js';
+import { verifyToken } from './lib/jwt.js';
+import { handleWSConnection } from './websocket/handler.js';
+import { User, Workspace } from './models/index.js';
+import { buildTwimlStreamResponse, findWorkspaceByTwilioNumber, handleTwilioMediaWS, isTwilioMediaPath } from './twilio.js';
 
 dotenv.config();
 

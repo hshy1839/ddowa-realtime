@@ -1,6 +1,6 @@
 import { WebSocket } from 'ws';
-import { AgentConfig, Contact, Conversation, Message, Workspace } from './models';
-import { GeminiLiveProvider } from './providers/GeminiLiveProvider';
+import { AgentConfig, Contact, Conversation, Message, Workspace } from './models/index.js';
+import { GeminiLiveProvider } from './providers/GeminiLiveProvider.js';
 
 function normalizePhone(input?: string): string {
   return (input || '').replace(/\D/g, '');

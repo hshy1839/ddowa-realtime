@@ -1,10 +1,10 @@
 import { WebSocket } from 'ws';
 import axios from 'axios';
-import { IAgentProvider } from '../providers/types';
-import { GeminiLiveProvider } from '../providers/GeminiLiveProvider';
-import { AgentConfig, Booking, Contact, Conversation, Message, Workspace } from '../models';
-import { executeToolCall } from './tools';
-import { IParsedToken } from '../lib/jwt';
+import { IAgentProvider } from '../providers/types.js';
+import { GeminiLiveProvider } from '../providers/GeminiLiveProvider.js';
+import { AgentConfig, Booking, Contact, Conversation, Message, Workspace } from '../models/index.js';
+import { executeToolCall } from './tools.js';
+import { IParsedToken } from '../lib/jwt.js';
 
 export interface WSSession {
   ws: WebSocket;

@@ -1,2 +1,2 @@
-export { handleWSConnection } from './handler';
-export { executeToolCall } from './tools';
+export { handleWSConnection } from './handler.js';
+export { executeToolCall } from './tools.js';
