@@ -18,6 +18,9 @@ export default function CallPage() {
   const [geminiHealth, setGeminiHealth] = useState<string>('');
   const [wsReady, setWsReady] = useState(false);
   const [speechRate, setSpeechRate] = useState(1.0);
+  const [micInputGain, setMicInputGain] = useState(1.0);
+  const [micNoiseGate, setMicNoiseGate] = useState(0.008);
+  const [micSelfMonitor, setMicSelfMonitor] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const speechRateRef = useRef(1.0);
@@ -27,9 +30,9 @@ export default function CallPage() {
 
   const { isRecording, startRecording, stopRecording, error: micError, volumeLevel } = useMicrophoneInput((pcm16Base64, sampleRate, seq) => {
     const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN || !conversationIdRef.current) return;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
     ws.send(JSON.stringify({ type: 'audio.chunk', conversationId: conversationIdRef.current, pcm16ChunkBase64: pcm16Base64, seq, sampleRate }));
-  });
+  }, { inputGain: micInputGain, noiseGate: micNoiseGate, selfMonitor: micSelfMonitor });
 
   useEffect(() => {
     speechRateRef.current = speechRate;
@@ -47,6 +50,9 @@ export default function CallPage() {
         conversationIdRef.current = message.conversationId;
         setConversationId(message.conversationId);
         setSpeechRate(Number(message.speechRate) || 1.0);
+        setMicInputGain(Number(message.micInputGain) || 1.0);
+        setMicNoiseGate(Number(message.micNoiseGate) || 0.008);
+        setMicSelfMonitor(Boolean(message.micSelfMonitor));
         setIsCallActive(true);
       } else if (message.type === 'stt.delta') setSttText(message.textDelta || '');
       else if (message.type === 'agent.delta') setAgentText(message.textDelta || '');
@@ -133,6 +139,7 @@ export default function CallPage() {
             <p>입력 레벨: {volumeLevel}%</p>
             {conversationId && <p>📞 ID: {conversationId.slice(0, 8)}...</p>}
             <p>🗣️ 말하기 속도: {speechRate.toFixed(2)}x</p>
+            <p>🎙️ 마이크 감도: {micInputGain.toFixed(2)}x / 게이트: {micNoiseGate.toFixed(3)} / 셀프모니터: {micSelfMonitor ? 'ON' : 'OFF'}</p>
             {geminiHealth && <p className={geminiHealth.includes('OK') ? 'text-green-600' : 'text-red-500'}>🏥 {geminiHealth}</p>}
             {micError && <p className="text-red-500">🎙️ {micError}</p>}
           </div>

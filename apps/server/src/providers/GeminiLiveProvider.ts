@@ -251,7 +251,7 @@ export class GeminiLiveProvider extends EventEmitter implements IAgentProvider {
       this.liveConfig.fallback
         ? `\n질문에 답할 수 없으면 다음 문장 스타일로 안내: "${this.liveConfig.fallback}"`
         : '',
-      '\n예약 관련 요청(조회/추가/변경/취소)이 들어오면 고객 전화번호를 반드시 확인해서 처리하도록 안내하세요. 날짜/시간이 없으면 YYYY-MM-DD HH:mm 형식으로 다시 물어보세요.',
+      '\n예약 관련 요청(조회/추가/변경/취소)이 들어오면 고객 전화번호를 반드시 확인해서 처리하도록 안내하세요. 날짜/시간이 없으면 자연어로 다시 물어보세요(예: 내일 오후 3시, 2월 18일 14시). 특정 포맷을 강요하지 마세요.',
       '\n불필요한 메타설명 없이 자연스럽고 짧게 답하세요.',
     ]
       .filter(Boolean)

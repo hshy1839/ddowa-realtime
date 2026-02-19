@@ -169,7 +169,7 @@ http://localhost:3000/call/demo (로그인 없음)
 
 # 또는 로컬 MongoDB 터미널
 mongo
-> use tohwa
+> use ddowa
 > db.conversations.find().pretty()
 > db.bookings.find().pretty()
 > db.contacts.find().pretty()

@@ -14,10 +14,10 @@ export async function executeToolCall(
         return {
           toolCallId: `tool_${Date.now()}`,
           result: {
-            companyName: 'Tohwa AI Consultation',
+            companyName: 'ddowa AI Consultation',
             phone: '+82-10-1234-5678',
             hours: 'Monday-Friday 9AM-6PM (KST)',
-            website: 'https://tohwa.example.com',
+            website: 'https://ddowa.example.com',
             description: 'Professional AI-powered consultation service',
           },
         };

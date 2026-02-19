@@ -1,4 +1,4 @@
-# Tohwa 빠른 시작 가이드
+# ddowa 빠른 시작 가이드
 
 ## 1️⃣ 환경 설정 (Windows PowerShell)
 
@@ -37,7 +37,7 @@ mongod
 
 # 다른 터미널에서 mongo shell로 테스트
 mongo
-> use tohwa
+> use ddowa
 > db.createCollection("test")
 ```
 
@@ -48,7 +48,7 @@ mongo
 3. 연결 문자열 복사
 4. `.env` 파일 업데이트:
 ```
-MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/tohwa
+MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/ddowa
 ```
 
 ## 4️⃣ Google Gemini API 설정

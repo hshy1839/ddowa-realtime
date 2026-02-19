@@ -19,7 +19,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-[#f7f7f7] text-black">
       <div className="lg:grid lg:grid-cols-[260px_1fr]">
         <aside className="hidden lg:flex lg:flex-col border-r border-black/10 bg-white min-h-screen p-5">
-          <h1 className="text-2xl font-bold mb-8 tracking-tight">Tohwa</h1>
+          <h1 className="text-2xl font-bold mb-8 tracking-tight">ddowa</h1>
           <nav className="space-y-1">
             {menus.map((m) => (
               <a key={m.href} href={m.href} className="block px-4 py-2.5 rounded-xl text-sm hover:bg-black hover:text-white transition">
@@ -41,7 +41,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
         <main className="min-w-0">
           <header className="lg:hidden sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-black/10 px-4 py-3">
-            <div className="text-lg font-bold mb-2">Tohwa</div>
+            <div className="text-lg font-bold mb-2">ddowa</div>
             <div className="flex gap-2 overflow-x-auto no-scrollbar">
               {menus.map((m) => (
                 <a key={m.href} href={m.href} className="whitespace-nowrap px-3 py-1.5 rounded-lg border border-black/15 text-xs">

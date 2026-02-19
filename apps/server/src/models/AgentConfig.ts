@@ -28,9 +28,22 @@ const AgentConfigSchema = new mongoose.Schema(
     companyDescription: String,
     companyPhone: String,
     companyWebsite: String,
+    twilioPhoneNumber: String,
     speechRate: {
       type: Number,
       default: 1.0,
+    },
+    micInputGain: {
+      type: Number,
+      default: 1.0,
+    },
+    micNoiseGate: {
+      type: Number,
+      default: 0.0,
+    },
+    micSelfMonitor: {
+      type: Boolean,
+      default: false,
     },
   },
   { timestamps: true }

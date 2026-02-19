@@ -62,7 +62,7 @@ const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
   console.log(`
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  🚀 Tohwa Express Server (JavaScript)
+  🚀 ddowa Express Server (JavaScript)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   Express API:      http://localhost:${PORT}
   WebSocket:        ws://localhost:${PORT}

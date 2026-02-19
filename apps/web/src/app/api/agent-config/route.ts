@@ -23,7 +23,11 @@ export async function GET(_request: NextRequest) {
         companyDescription: '',
         companyPhone: '',
         companyWebsite: '',
+        twilioPhoneNumber: '',
         speechRate: 1.0,
+        micInputGain: 1.0,
+        micNoiseGate: 0.0,
+        micSelfMonitor: false,
       },
     });
   } catch (e: any) {
@@ -37,11 +41,39 @@ export async function PUT(request: NextRequest) {
     const token = await requireAuth();
     await connectMongo();
 
-    const body = await request.json();
+    const body = (await request.json()) || {};
+    const {
+      _id,
+      __v,
+      createdAt,
+      updatedAt,
+      workspaceId: _workspaceId,
+      ...rest
+    } = body;
+
+    const payload = {
+      tone: rest.tone,
+      rules: Array.isArray(rest.rules) ? rest.rules : [],
+      forbidden: Array.isArray(rest.forbidden) ? rest.forbidden : [],
+      fallback: rest.fallback,
+      toolsEnabled: Array.isArray(rest.toolsEnabled) ? rest.toolsEnabled : [],
+      agentGender: rest.agentGender,
+      agentPersonality: rest.agentPersonality,
+      companyName: rest.companyName,
+      companyDescription: rest.companyDescription,
+      companyPhone: rest.companyPhone,
+      companyWebsite: rest.companyWebsite,
+      twilioPhoneNumber: rest.twilioPhoneNumber,
+      speechRate: rest.speechRate,
+      micInputGain: rest.micInputGain,
+      micNoiseGate: rest.micNoiseGate,
+      micSelfMonitor: rest.micSelfMonitor,
+      workspaceId: token.workspaceId,
+    };
 
     const config = await AgentConfig.findOneAndUpdate(
       { workspaceId: token.workspaceId },
-      { ...body, workspaceId: token.workspaceId },
+      payload,
       { upsert: true, new: true }
     ).lean();
 

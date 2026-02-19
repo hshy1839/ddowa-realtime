@@ -33,6 +33,9 @@ export default function PublicCallPage() {
   const [volumeLevel, setVolumeLevel] = useState(0);
   const [micError, setMicError] = useState<string>();
   const [speechRate, setSpeechRate] = useState(1.0);
+  const [micInputGain, setMicInputGain] = useState(1.0);
+  const [micNoiseGate, setMicNoiseGate] = useState(0.008);
+  const [micSelfMonitor, setMicSelfMonitor] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const speechRateRef = useRef(1.0);
@@ -58,7 +61,7 @@ export default function PublicCallPage() {
 
   const { isRecording, startRecording, stopRecording, error: useMicError, volumeLevel: micVolumeLevel } =
     useMicrophoneInput((pcm16Base64, sampleRate, seq) => {
-      if (wsRef.current?.readyState === WebSocket.OPEN && isCallActive) {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(
           JSON.stringify({
             type: 'audio.chunk',
@@ -68,7 +71,7 @@ export default function PublicCallPage() {
           })
         );
       }
-    });
+    }, { inputGain: micInputGain, noiseGate: micNoiseGate, selfMonitor: micSelfMonitor });
 
   useEffect(() => {
     setVolumeLevel(micVolumeLevel);
@@ -103,6 +106,9 @@ export default function PublicCallPage() {
           setCaptions([]);
           nextPlaybackTimeRef.current = 0;
           setSpeechRate(Number(message.speechRate) || 1.0);
+          setMicInputGain(Number(message.micInputGain) || 1.0);
+          setMicNoiseGate(Number(message.micNoiseGate) || 0.008);
+          setMicSelfMonitor(Boolean(message.micSelfMonitor));
           return;
         }
 
@@ -110,6 +116,9 @@ export default function PublicCallPage() {
           setIsCallActive(false);
           nextPlaybackTimeRef.current = 0;
           setSpeechRate(Number(message.speechRate) || 1.0);
+          setMicInputGain(Number(message.micInputGain) || 1.0);
+          setMicNoiseGate(Number(message.micNoiseGate) || 0.008);
+          setMicSelfMonitor(Boolean(message.micSelfMonitor));
           return;
         }
 
@@ -274,9 +283,10 @@ export default function PublicCallPage() {
   return (
     <div className="h-screen overflow-y-auto bg-[#f7f7f7] text-black p-4 sm:p-6">
       <div className="max-w-4xl mx-auto mb-8">
-        <h1 className="text-3xl font-bold mb-2">🤖 Tohwa AI 상담</h1>
+        <h1 className="text-3xl font-bold mb-2">🤖 ddowa AI 상담</h1>
         <p className="text-black/55">실시간 음성 상담 및 자막 서비스</p>
         <p className="text-xs text-slate-500 mt-1">상담사 음성 속도: {speechRate.toFixed(2)}x</p>
+        <p className="text-xs text-slate-500 mt-1">마이크 감도: {micInputGain.toFixed(2)}x · 게이트: {micNoiseGate.toFixed(3)} · 셀프모니터: {micSelfMonitor ? 'ON' : 'OFF'}</p>
         <div className="mt-3 flex gap-2">
           <button
             onClick={handleDeleteReceived}

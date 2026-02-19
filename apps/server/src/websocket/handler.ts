@@ -220,6 +220,9 @@ async function handleWSMessage(sessionId: string, message: any) {
             (workspace as any)?.businessInfo?.website ||
             '',
           speechRate: Math.min(1.2, Math.max(0.8, Number((agentConfig as any)?.speechRate ?? 1.0) || 1.0)),
+          micInputGain: Math.min(2.0, Math.max(0.5, Number((agentConfig as any)?.micInputGain ?? 1.0) || 1.0)),
+          micNoiseGate: Math.min(0.05, Math.max(0, Number((agentConfig as any)?.micNoiseGate ?? 0.0) || 0.0)),
+          micSelfMonitor: Boolean((agentConfig as any)?.micSelfMonitor ?? false),
         };
 
         (session.provider as GeminiLiveProvider).setAgentConfig(mergedConfig as any);
@@ -238,6 +241,9 @@ async function handleWSMessage(sessionId: string, message: any) {
             type: 'call.started',
             conversationId: session.conversationId,
             speechRate: (mergedConfig as any).speechRate ?? 1.0,
+            micInputGain: (mergedConfig as any).micInputGain ?? 1.0,
+            micNoiseGate: (mergedConfig as any).micNoiseGate ?? 0.008,
+            micSelfMonitor: (mergedConfig as any).micSelfMonitor ?? false,
           })
         );
 

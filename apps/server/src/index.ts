@@ -8,6 +8,7 @@ import { connectMongo } from './lib/mongo';
 import { verifyToken } from './lib/jwt';
 import { handleWSConnection } from './websocket/handler';
 import { User, Workspace } from './models';
+import { buildTwimlStreamResponse, findWorkspaceByTwilioNumber, handleTwilioMediaWS, isTwilioMediaPath } from './twilio';
 
 dotenv.config();
 
@@ -51,9 +52,49 @@ async function main() {
   });
 
   app.use(express.json());
+  app.use(express.urlencoded({ extended: false }));
 
   app.get('/health', (_req, res) => {
-    res.json({ status: 'ok', message: 'Tohwa server is running' });
+    res.json({ status: 'ok', message: 'ddowa server is running' });
+  });
+
+
+  app.post('/twilio/voice', async (req, res) => {
+    try {
+      const called = String(req.body?.To || '');
+      const from = String(req.body?.From || '');
+
+      const workspaceId = (await findWorkspaceByTwilioNumber(called)) || '';
+
+      if (!workspaceId) {
+        res.set('Content-Type', 'text/xml');
+        return res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response><Say>등록되지 않은 Twilio 번호입니다.</Say></Response>');
+      }
+
+      const publicBase = (process.env.TWILIO_PUBLIC_BASE_URL || '').trim();
+      const explicitStream = (process.env.TWILIO_STREAM_WSS_URL || '').trim();
+
+      let streamUrl = explicitStream;
+      if (!streamUrl) {
+        const base = publicBase || `${(req.headers['x-forwarded-proto'] as string) || 'https'}://${req.headers.host}`;
+        const u = new URL(base);
+        u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:';
+        u.pathname = '/twilio/media';
+        streamUrl = u.toString();
+      }
+
+      const stream = new URL(streamUrl);
+      stream.searchParams.set('workspaceId', workspaceId);
+      if (from) stream.searchParams.set('from', from);
+
+      const twiml = buildTwimlStreamResponse(stream.toString());
+      res.set('Content-Type', 'text/xml');
+      return res.status(200).send(twiml);
+    } catch (e) {
+      console.error('[Twilio] voice webhook error:', e);
+      res.set('Content-Type', 'text/xml');
+      return res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response><Say>일시적 오류가 발생했습니다.</Say></Response>');
+    }
   });
 
   // Auth endpoints
@@ -143,12 +184,23 @@ async function main() {
   });
 
   wss.on('connection', (ws, req) => {
+    const url = new URL(req.url || '/', `http://${req.headers.host}`);
+
+    if (isTwilioMediaPath(url.pathname)) {
+      handleTwilioMediaWS(ws, req.url || '/').catch((e) => {
+        console.error('[Twilio] media WS init error:', e);
+        try {
+          ws.close(1011, 'Internal error');
+        } catch {}
+      });
+      return;
+    }
+
     // 1) Prefer httpOnly cookie token
     const cookies = parseCookies(req.headers.cookie);
     const rawToken = cookies.token;
 
     // 2) Also allow token via querystring (?token=...)
-    const url = new URL(req.url || '/', `http://${req.headers.host}`);
     const tokenFromQuery = url.searchParams.get('token') || undefined;
     const workspaceSlug = url.searchParams.get('workspaceSlug') || undefined;
 
@@ -169,7 +221,7 @@ async function main() {
       ws.send(
         JSON.stringify({
           type: 'connected',
-          message: 'Connected to Tohwa WebSocket Server',
+          message: 'Connected to ddowa WebSocket Server',
           timestamp: new Date().toISOString(),
         })
       );
@@ -183,7 +235,7 @@ async function main() {
   server.listen(PORT, () => {
     console.log(`
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-💎 Tohwa Server
+💎 ddowa Server
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ✓ HTTP:  http://localhost:${PORT}
 ✓ WebSocket:  ws://localhost:${PORT}

@@ -31,7 +31,7 @@ wss.on('connection', (ws) => {
   // 연결 시 즉시 'connected' 메시지 전송
   ws.send(JSON.stringify({ 
     type: 'connected', 
-    message: 'Connected to Tohwa WebSocket Server'
+    message: 'Connected to ddowa WebSocket Server'
   }));
   
   // call.start 메시지 처리
@@ -107,7 +107,7 @@ if (message.type === 'connected') {
 **테스트 결과**:
 ```bash
 $ curl http://localhost:7777/health
-{"status":"ok","message":"Tohwa server is running"}
+{"status":"ok","message":"ddowa server is running"}
 
 Status: 200 ✓
 ```
@@ -173,7 +173,7 @@ $webSocket.Dispose()
 
 **예상 응답**:
 ```json
-{"type":"connected","message":"Connected to Tohwa WebSocket Server"}
+{"type":"connected","message":"Connected to ddowa WebSocket Server"}
 {"type":"call.started","conversationId":"conv_1707574200000"}
 ```
 

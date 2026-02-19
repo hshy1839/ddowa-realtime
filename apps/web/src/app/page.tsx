@@ -5,7 +5,7 @@ export default function Home() {
     <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-800 text-white">
       {/* Navigation */}
       <nav className="flex justify-between items-center px-6 py-4 border-b border-slate-700">
-        <h1 className="text-2xl font-bold">Tohwa</h1>
+        <h1 className="text-2xl font-bold">ddowa</h1>
         <div className="flex gap-4">
           <a href="/login" className="px-4 py-2 hover:bg-slate-700 rounded">
             로그인

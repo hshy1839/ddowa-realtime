@@ -1,4 +1,4 @@
-# Tohwa - AI-Powered Realtime Consultation Platform
+# ddowa - AI-Powered Realtime Consultation Platform
 
 실시간 AI 음성 상담 및 예약 관리 플랫폼입니다. Google Gemini Multimodal Live API를 사용하여 자연스러운 음성 상담을 제공하고, 예약과 결제를 자동화합니다.
 
@@ -16,7 +16,7 @@
 
 ### 구조
 ```
-tohwa-realtime/
+ddowa-realtime/
 ├── apps/
 │   ├── web/              # Next.js 15 (App Router) 프론트엔드
 │   │   ├── src/
@@ -91,7 +91,7 @@ mongod
 3. 연결 문자열 복사
 4. `.env` 파일의 `MONGODB_URI` 업데이트:
 ```
-MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/tohwa
+MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/ddowa
 ```
 
 ### Google Gemini API 설정
