@@ -111,9 +111,11 @@ export function buildTwimlStreamResponse(streamUrl: string, statusCallbackUrl?: 
 
 export async function handleTwilioMediaWS(ws: WebSocket, reqUrl: string) {
   const u = new URL(reqUrl, 'http://localhost');
-  const workspaceId = u.searchParams.get('workspaceId') || '';
+  const pathParts = u.pathname.split('/').filter(Boolean);
+  const workspaceIdFromPath = pathParts[2] || '';
+  const workspaceId = u.searchParams.get('workspaceId') || workspaceIdFromPath || '';
   const from = u.searchParams.get('from') || '';
-  console.log(`[Twilio][media] ws connected workspaceId=${workspaceId} from=${from}`);
+  console.log(`[Twilio][media] ws connected path=${u.pathname} workspaceId=${workspaceId} from=${from}`);
 
   if (!workspaceId) {
     ws.close(1008, 'workspaceId required');

@@ -99,7 +99,8 @@ async function main() {
       }
 
       const stream = new URL(streamUrl);
-      stream.searchParams.set('workspaceId', workspaceId);
+      // Twilio media WS에서 query string이 누락되는 케이스가 있어 workspaceId를 path에 포함
+      stream.pathname = `/twilio/media/${workspaceId}`;
       if (from) stream.searchParams.set('from', from);
       console.log(`[Twilio][voice] workspaceId=${workspaceId} stream=${stream.toString()}`);
 
