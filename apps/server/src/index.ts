@@ -67,6 +67,13 @@ async function main() {
   });
 
 
+  app.post('/twilio/stream-status', (req, res) => {
+    try {
+      console.log('[Twilio][stream-status]', JSON.stringify(req.body || {}));
+    } catch {}
+    return res.sendStatus(204);
+  });
+
   app.post('/twilio/voice', async (req, res) => {
     try {
       const called = String(req.body?.To || '');
@@ -96,7 +103,8 @@ async function main() {
       if (from) stream.searchParams.set('from', from);
       console.log(`[Twilio][voice] workspaceId=${workspaceId} stream=${stream.toString()}`);
 
-      const twiml = buildTwimlStreamResponse(stream.toString());
+      const callback = `${(req.headers['x-forwarded-proto'] as string) || 'https'}://${req.headers.host}/twilio/stream-status`;
+      const twiml = buildTwimlStreamResponse(stream.toString(), callback);
       res.set('Content-Type', 'text/xml');
       return res.status(200).send(twiml);
     } catch (e) {
