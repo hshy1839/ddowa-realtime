@@ -730,26 +730,42 @@ export async function handleBookingCrudByPhone(session: WSSession, userTextRaw: 
 
     if (!list.length) return `전화번호 ${phone} 기준 예약 내역이 없습니다.`;
     const lines = list.map((b: any, i: number) => {
-      const service = b.serviceName || (String(b.memo || '').match(/service:([^|\n]+)/)?.[1]?.trim()) || '일반';
       const memo = b.memo ? ` | memo:${String(b.memo).slice(0, 60)}` : '';
-      return `${i + 1}) ${new Date(b.startAt).toLocaleString('ko-KR')} (${b.status}) · 서비스:${service}${memo}`;
+      return `${i + 1}) ${new Date(b.startAt).toLocaleString('ko-KR')} (${b.status})${memo}`;
     });
     return `전화번호 ${phone} 예약 내역입니다.\n` + lines.join('\n');
   }
 
   if (isCreate) {
-    const startAt = dts[0] || session.pendingBookingAt;
-    if (!startAt) return '예약 추가할 날짜/시간을 말씀해 주세요. 예: 내일 오후 3시 / 2월 18일 14시';
-    const endAt = startAt;
-    const exists = await Booking.findOne({
-      workspaceId: session.workspaceId,
-      startAt,
-      status: { $ne: 'cancelled' },
-    }).lean();
-    if (exists) {
-      return `해당 시간은 이미 다른 예약이 있습니다. (${new Date(exists.startAt).toLocaleString('ko-KR')})`;
+    const candidates = [...dts, ...(session.pendingBookingAt ? [session.pendingBookingAt] : [])]
+      .filter(Boolean)
+      .map((d) => new Date(d as Date))
+      .filter((d) => !Number.isNaN(d.getTime()));
+
+    if (!candidates.length) return '예약 추가할 날짜/시간을 말씀해 주세요. 예: 내일 오후 3시 / 2월 18일 14시';
+
+    let selected: Date | null = null;
+    let firstConflict: any = null;
+
+    for (const c of candidates) {
+      const exists = await Booking.findOne({
+        workspaceId: session.workspaceId,
+        startAt: c,
+        status: { $ne: 'cancelled' },
+      }).lean();
+      if (!exists) {
+        selected = c;
+        break;
+      }
+      if (!firstConflict) firstConflict = exists;
     }
 
+    if (!selected) {
+      return `요청하신 시간대는 이미 예약이 있습니다. (${new Date(firstConflict.startAt).toLocaleString('ko-KR')}) 다른 시간을 말씀해 주세요.`;
+    }
+
+    const startAt = selected;
+    const endAt = startAt;
     const serviceName = serviceCandidate || session.pendingServiceName || inferServiceName(session.fullUserTranscript) || '전화 상담';
     const booking = await Booking.create({
       workspaceId: session.workspaceId,
@@ -760,7 +776,7 @@ export async function handleBookingCrudByPhone(session: WSSession, userTextRaw: 
       status: 'confirmed',
       memo: `phone:${phone} | service:${serviceName}`,
     });
-    console.log(`[WEB][booking] created id=${booking._id} workspace=${session.workspaceId} contact=${contact._id} at=${startAt.toISOString()}`);
+    console.log(`[WEB][booking] created id=${booking._id} workspace=${session.workspaceId} contact=${contact._id} at=${startAt.toISOString()} service=${serviceName}`);
     session.lastCreatedBookingId = String(booking._id);
     session.pendingBookingAt = null;
     session.pendingBookingRequested = false;

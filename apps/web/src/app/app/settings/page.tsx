@@ -208,7 +208,7 @@ export default function SettingsPage() {
                 value={config.companyName}
                 onChange={(e) => setConfig((p) => ({ ...p, companyName: e.target.value }))}
                 className="w-full px-3 py-2 rounded-xl border border-black/20 bg-white"
-                placeholder="형식: 브랜드/상호명 그대로 | 예시: 또화 상담센터"
+                placeholder="예시: 브랜드/상호명 그대로"
               />
             </Field>
 
@@ -226,7 +226,7 @@ export default function SettingsPage() {
                 value={config.twilioPhoneNumber}
                 onChange={(e) => setConfig((p) => ({ ...p, twilioPhoneNumber: e.target.value }))}
                 className="w-full px-3 py-2 rounded-xl border border-black/20 bg-white"
-                placeholder="형식: Twilio 구매 번호(E.164 권장) | 예시: +14155552671"
+                placeholder="예시: +827077777777"
               />
             </Field>
 
@@ -235,7 +235,7 @@ export default function SettingsPage() {
                 value={config.companyWebsite}
                 onChange={(e) => setConfig((p) => ({ ...p, companyWebsite: e.target.value }))}
                 className="w-full px-3 py-2 rounded-xl border border-black/20 bg-white"
-                placeholder="형식: https:// 포함 전체 URL | 예시: https://ddowa.ai"
+                placeholder="예시: https:// 포함 전체 URL "
               />
             </Field>
           </div>

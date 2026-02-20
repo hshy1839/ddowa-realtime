@@ -243,7 +243,7 @@ export default function BookingsPage() {
               <div key={b._id} className={`border rounded-xl p-3.5 ${dayKey(new Date(b.startAt)) === dayKey(selectedDate) ? 'border-[#2bbf4b]/55 bg-[#1d2a22]' : 'border-white/10 bg-[#1a212d]'}`}>
                 <div className="flex justify-between items-start gap-3">
                   <div className="min-w-0">
-                    <p className="font-semibold text-white truncate">{b.serviceName || '서비스'}</p>
+                    <p className="font-semibold text-white truncate">예약</p>
                     <p className="text-xs text-white/70 mt-0.5">
                       {new Date(b.startAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>
