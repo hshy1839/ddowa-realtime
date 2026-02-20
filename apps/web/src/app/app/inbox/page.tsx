@@ -39,6 +39,9 @@ export default function InboxPage() {
   }, []);
 
   const deleteConversation = async (conversationId: string) => {
+    const ok = window.confirm('삭제하시겠습니까?');
+    if (!ok) return;
+
     try {
       setDeletingId(conversationId);
       const res = await fetch('/api/conversations', {
@@ -65,20 +68,20 @@ export default function InboxPage() {
 
   return (
     <div className="h-[calc(100vh-140px)] min-h-0 grid grid-cols-1 lg:grid-cols-3 gap-4">
-      <section className="lg:col-span-1 rounded-2xl border border-black/10 bg-white p-4 overflow-y-auto">
+      <section className="lg:col-span-1 rounded-2xl border border-white/15 bg-[#11151d] p-4 overflow-y-auto">
         <h1 className="text-2xl font-bold mb-4">받은 메시지</h1>
         <div className="space-y-2">
           {conversations.map((conv) => {
             const preview = conv.messages?.[conv.messages.length - 1]?.text || conv.summary || '(메시지 없음)';
             return (
-              <div key={conv._id} onClick={() => setSelectedId(conv._id)} className={`p-3 rounded-xl cursor-pointer border ${selectedId === conv._id ? 'bg-black text-white border-black' : 'bg-white border-black/15 hover:border-black/40'}`}>
+              <div key={conv._id} onClick={() => setSelectedId(conv._id)} className={`p-3 rounded-xl cursor-pointer border transition ${selectedId === conv._id ? 'bg-[#1d2430] text-white border-[#2bbf4b]/60 shadow-[0_0_0_1px_rgba(43,191,75,0.35)]' : 'bg-[#151b24] border-white/10 hover:border-white/30 text-white'}`}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="font-semibold truncate">{conv.intent || '상담'}</p>
-                    <p className={`text-xs ${selectedId === conv._id ? 'text-white/70' : 'text-black/50'}`}>{new Date(conv.startedAt).toLocaleString()}</p>
-                    <p className={`text-[11px] mt-1 font-mono break-all ${selectedId === conv._id ? 'text-white/70' : 'text-black/55'}`}>contactId: {conv.contactId || '-'}</p>
+                    <p className="font-semibold truncate text-white">{conv.intent || '상담'}</p>
+                    <p className="text-xs text-white/70">{new Date(conv.startedAt).toLocaleString()}</p>
+                    <p className="text-[11px] mt-1 font-mono break-all text-white/65">contactId: {conv.contactId || '-'}</p>
                     <p
-                      className={`text-sm mt-1 break-words overflow-hidden ${selectedId === conv._id ? 'text-white/80' : 'text-black/65'}`}
+                      className="text-sm mt-1 break-words overflow-hidden text-white/90"
                       style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any }}
                     >
                       {preview}
@@ -91,9 +94,19 @@ export default function InboxPage() {
                       deleteConversation(conv._id);
                     }}
                     disabled={deletingId === conv._id}
-                    className="px-2 py-1 text-xs rounded-lg border border-black/20 bg-white text-black disabled:opacity-50"
+                    className="px-2 py-1 text-xs rounded-lg border border-red-400/60 bg-red-500/10 text-red-400 disabled:opacity-50"
                   >
-                    {deletingId === conv._id ? '삭제중...' : '삭제'}
+                    {deletingId === conv._id ? (
+                      '…'
+                    ) : (
+                      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M3 6h18" />
+                        <path d="M8 6V4h8v2" />
+                        <path d="M19 6l-1 14H6L5 6" />
+                        <path d="M10 11v6" />
+                        <path d="M14 11v6" />
+                      </svg>
+                    )}
                   </button>
                 </div>
               </div>
@@ -102,13 +115,13 @@ export default function InboxPage() {
         </div>
       </section>
 
-      <section className="lg:col-span-2 rounded-2xl border border-black/10 bg-[#eef2f5] p-4 flex flex-col min-h-0 overflow-hidden">
+      <section className="lg:col-span-2 rounded-2xl border border-white/15 bg-[#0f1115] p-4 flex flex-col min-h-0 overflow-hidden">
         {selected ? (
           <>
-            <div className="mb-3 rounded-xl bg-white px-4 py-3 border border-black/10">
-              <p className="font-semibold">{selected.intent || '상담'}</p>
-              <p className="text-xs text-black/50">{new Date(selected.startedAt).toLocaleString()} · {selected.durationSec || 0}초</p>
-              <p className="text-[11px] text-black/60 font-mono mt-1 break-all">contactId: {selected.contactId || '-'}</p>
+            <div className="mb-3 rounded-xl bg-[#151922] px-4 py-3 border border-white/15">
+              <p className="font-semibold text-white">{selected.intent || '상담'}</p>
+              <p className="text-xs text-white/70">{new Date(selected.startedAt).toLocaleString()} · {selected.durationSec || 0}초</p>
+              <p className="text-[11px] text-white/65 font-mono mt-1 break-all">contactId: {selected.contactId || '-'}</p>
             </div>
 
             <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-3 pr-1">
@@ -123,16 +136,16 @@ export default function InboxPage() {
                   <div key={msg._id}>
                     {showDateDivider && <div className="flex justify-center my-3"><span className="text-[11px] bg-white px-2 py-1 rounded-full border border-black/10 text-black/55">{dateLabel}</span></div>}
                     <div className={`flex items-end gap-2 min-w-0 ${isUser ? 'justify-end' : 'justify-start'}`}>
-                      {!isUser && <div className="h-8 w-8 rounded-full bg-white border border-black/10 text-xs grid place-items-center">AI</div>}
-                      <div className={`max-w-[82%] sm:max-w-[78%] min-w-0 rounded-2xl px-3 py-2 shadow-sm ${isUser ? 'bg-black text-white rounded-br-md' : 'bg-white text-black rounded-bl-md border border-black/10'}`}>
-                        {!isUser && <p className="text-[11px] text-black/50 mb-1">상담사</p>}
-                        <p className="text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{msg.text || '(빈 메시지)'}</p>
-                        <div className={`text-[10px] mt-1 opacity-60 flex items-center gap-1 ${isUser ? 'justify-end' : 'justify-start'}`}>
+                      {!isUser && <div className="h-8 w-8 rounded-full bg-gradient-to-br from-[#2bbf4b] to-[#1a7f31] text-[11px] font-bold text-white grid place-items-center">AI</div>}
+                      <div className={`max-w-[82%] sm:max-w-[76%] min-w-0 rounded-2xl px-3.5 py-2.5 shadow-sm ${isUser ? 'bg-gradient-to-r from-[#168d35] via-[#22b14c] to-[#39d866] text-white rounded-br-md' : 'bg-[#262b36] text-white rounded-bl-md border border-white/10'}`}>
+                        {!isUser && <p className="text-[11px] text-white/60 mb-1">또와AI</p>}
+                        <p className="text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-6">{msg.text || '(빈 메시지)'}</p>
+                        <div className={`text-[10px] mt-1 text-white/65 flex items-center gap-1 ${isUser ? 'justify-end' : 'justify-start'}`}>
                           <span>{msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString() : ''}</span>
                           {isUser && <span>읽음</span>}
                         </div>
                       </div>
-                      {isUser && <div className="h-8 w-8 rounded-full bg-black text-white text-xs grid place-items-center">나</div>}
+                      {isUser && <div className="h-8 w-8 rounded-full bg-gradient-to-br from-[#168d35] to-[#39d866] text-white text-[11px] font-bold grid place-items-center">고객</div>}
                     </div>
                   </div>
                 );

@@ -131,42 +131,14 @@ async function main() {
       }
 
       if (action === 'signup') {
-        console.log('📍 [AUTH] 회원가입 시작:', email);
-        const existing = await User.findOne({ email: email.toLowerCase() });
-        if (existing) {
-          console.error('❌ [AUTH] 사용자 이미 존재:', email);
-          return res.status(400).json({ error: 'User already exists' });
-        }
-
-        const slugBase = email.split('@')[0].toLowerCase().replace(/[^a-z0-9-_]/g, '');
-        const slug = slugBase || `ws-${Date.now()}`;
-
-        console.log('📍 [AUTH] Workspace 생성 중:', slug);
-        const workspace = await Workspace.create({
-          name: 'My Workspace',
-          slug,
-          timezone: 'UTC',
+        // 회원가입 임시 중단: 정식 출시 전 설문 유도
+        return res.status(403).json({
+          error: 'SIGNUP_DISABLED',
+          message:
+            '현재 회원가입은 정식 출시 전 준비 단계로 일시 중단되었습니다. 설문에 참여해주시면 할인 혜택을 드립니다.',
+          surveyUrl:
+            'https://docs.google.com/forms/d/e/1FAIpQLSdGPT4XZEVo_Nu3Z3zkBs4TjN8tOTTQFPlPQtgpBPDHB-BSBg/viewform?usp=dialog',
         });
-        console.log('✓ [AUTH] Workspace 생성됨:', workspace._id);
-
-        console.log('📍 [AUTH] 비밀번호 해싱 중...');
-        const passwordHash = await bcrypt.hash(password, 10);
-        const user = await User.create({
-          email: email.toLowerCase(),
-          passwordHash,
-          role: 'admin',
-          workspaceId: workspace._id,
-        });
-        console.log('✓ [AUTH] 사용자 생성됨:', user._id);
-
-        const token = jwt.sign(
-          { userId: user._id, email: user.email, workspaceId: workspace._id },
-          JWT_SECRET,
-          { expiresIn: '7d' }
-        );
-        console.log('✓ [AUTH] 토큰 생성됨');
-
-        return res.json({ token, user: { email: user.email } });
       }
 
       if (action === 'login') {

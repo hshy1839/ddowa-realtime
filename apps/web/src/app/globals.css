@@ -1,3 +1,74 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* App pages theme (except landing) */
+.app-theme {
+  color: #fff;
+}
+
+.app-theme .bg-white {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+.app-theme .border-black\/10,
+.app-theme .border-black\/15,
+.app-theme .border-black\/20 {
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+.app-theme .text-black,
+.app-theme .text-black\/70,
+.app-theme .text-black\/60,
+.app-theme .text-black\/55,
+.app-theme .text-black\/50,
+.app-theme .text-black\/45 {
+  color: rgba(255, 255, 255, 0.88) !important;
+}
+
+.app-theme input,
+.app-theme textarea,
+.app-theme select {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  color: #fff !important;
+}
+
+.app-theme input::placeholder,
+.app-theme textarea::placeholder {
+  color: rgba(255, 255, 255, 0.5) !important;
+}
+
+.app-theme .app-stars,
+.app-theme .app-stars:after {
+  content: '';
+  position: fixed;
+  inset: -2000px;
+  pointer-events: none;
+  background-image:
+    radial-gradient(2px 2px at 40px 60px, rgba(255, 255, 255, 0.75), transparent),
+    radial-gradient(1.4px 1.4px at 140px 170px, rgba(255, 255, 255, 0.65), transparent),
+    radial-gradient(1.6px 1.6px at 260px 320px, rgba(255, 255, 255, 0.55), transparent),
+    radial-gradient(1.2px 1.2px at 360px 110px, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(1.8px 1.8px at 470px 250px, rgba(255, 255, 255, 0.7), transparent);
+  background-size: 560px 560px;
+  animation: app-star-drift 150s linear infinite;
+  opacity: 0.22;
+  z-index: 0;
+}
+
+.app-theme .app-stars-2,
+.app-theme .app-stars-2:after {
+  background-size: 760px 760px;
+  animation-duration: 220s;
+  opacity: 0.14;
+}
+
+@keyframes app-star-drift {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(1000px, 1200px, 0);
+  }
+}
