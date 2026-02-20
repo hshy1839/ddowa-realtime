@@ -157,6 +157,11 @@ export class GeminiLiveProvider extends EventEmitter implements IAgentProvider {
     this.rt.sendAudioChunk(pcm16ChunkBase64, sampleRate);
   }
 
+  async sendTextTurn(text: string): Promise<void> {
+    if (!this.rt || !this.connected) return;
+    this.rt.sendTextTurn(text);
+  }
+
   async endConversation(): Promise<{ summary: string; intent: string }> {
     const summary = this.messages.map((m) => `${m.role}: ${m.content}`).join('\n');
     return {

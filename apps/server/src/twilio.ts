@@ -158,6 +158,7 @@ export async function handleTwilioMediaWS(ws: WebSocket, reqUrl: string) {
   let sttBuffer = '';
   let agentBuffer = '';
   let startedAt = Date.now();
+  let greeted = false;
 
   const contact = from
     ? await Contact.findOneAndUpdate(
@@ -252,6 +253,10 @@ export async function handleTwilioMediaWS(ws: WebSocket, reqUrl: string) {
         streamSid = msg.start?.streamSid || msg.streamSid || '';
         startedAt = Date.now();
         console.log(`[Twilio][media] start streamSid=${streamSid}`);
+        if (!greeted) {
+          greeted = true;
+          await provider.sendTextTurn('전화 연결되었습니다. 안녕하세요, 무엇을 도와드릴까요?');
+        }
       } else if (msg.event === 'media') {
         const payload = msg.media?.payload || '';
         if (!payload) return;
