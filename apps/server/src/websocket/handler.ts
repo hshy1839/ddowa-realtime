@@ -21,6 +21,7 @@ export interface WSSession {
   pendingBookingRequested: boolean;
   lastCreatedBookingId: string;
   pendingServiceName: string;
+  lastBookingProbeSig: string;
 }
 
 const sessions = new Map<string, WSSession>();
@@ -141,6 +142,7 @@ export async function handleWSConnection(ws: WebSocket, token: IParsedToken | nu
     pendingBookingRequested: false,
     lastCreatedBookingId: '',
     pendingServiceName: '',
+    lastBookingProbeSig: '',
   };
 
   sessions.set(sessionId, session);
@@ -367,6 +369,7 @@ async function handleWSMessage(sessionId: string, message: any) {
         session.pendingBookingRequested = false;
         session.lastCreatedBookingId = '';
         session.pendingServiceName = '';
+        session.lastBookingProbeSig = '';
         session.conversationId = '';
         break;
       }
@@ -400,6 +403,28 @@ function setupProviderListeners(session: WSSession) {
       session.fullUserTranscript = [session.fullUserTranscript, event.textDelta].filter(Boolean).join('\n');
       const detected = extractPhone(session.fullUserTranscript);
       if (detected) session.lastCustomerPhone = detected;
+
+      // Twilio에서 turn.complete 누락/지연이 있어도 예약 로직이 동작하도록 실시간 프로브
+      const hasBookingHint = /(예약|일정|스케줄|조회|확인|내역|추가|생성|등록|수정|변경|취소|삭제|시|전화번호|번호)/.test(session.fullUserTranscript);
+      if (hasBookingHint) {
+        const sig = `${session.lastCustomerPhone}|${session.pendingBookingAt ? session.pendingBookingAt.toISOString() : ''}|${session.fullUserTranscript.slice(-80)}`;
+        if (sig !== session.lastBookingProbeSig) {
+          session.lastBookingProbeSig = sig;
+          const bookingReply = await handleBookingCrudByPhone(session, session.fullUserTranscript);
+          if (bookingReply) {
+            console.log(`[WEB][booking][probe] ${bookingReply}`);
+            session.ws.send(JSON.stringify({ type: 'agent.delta', textDelta: bookingReply }));
+            try {
+              const maybeSendTextTurn = (session.provider as any)?.sendTextTurn;
+              if (typeof maybeSendTextTurn === 'function') {
+                await maybeSendTextTurn.call(session.provider, bookingReply);
+              }
+            } catch (e) {
+              console.error('Failed to speak booking probe reply:', e);
+            }
+          }
+        }
+      }
     }
   });
 

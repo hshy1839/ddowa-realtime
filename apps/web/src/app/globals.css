@@ -2,6 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
+html,
+body {
+  background: #000;
+  overscroll-behavior-y: none;
+  min-height: 100%;
+}
+
+body {
+  min-height: 100dvh;
+}
+
 /* App pages theme (except landing) */
 .app-theme {
   color: #fff;

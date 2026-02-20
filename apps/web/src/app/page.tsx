@@ -39,15 +39,9 @@ export default function Home() {
       <header className="sticky top-0 z-30 border-b border-white/10 bg-black/70 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5">
           <div className="text-lg font-extrabold tracking-tight">또와AI</div>
-          {authed ? (
-            <a href="/app" className="rounded-md bg-[#2bbf4b] px-5 py-2 text-sm font-bold text-white hover:bg-[#35cf57]">
-              시작하기
-            </a>
-          ) : (
-            <a href="/login" className="rounded-md border border-white/20 px-4 py-1.5 text-xs font-semibold text-white/90 hover:border-white/40">
-              로그인
-            </a>
-          )}
+          <a href={authed ? '/app' : '/login'} className="rounded-md bg-[#2bbf4b] px-5 py-2 text-sm font-bold text-white hover:bg-[#35cf57]">
+            시작하기
+          </a>
         </div>
       </header>
 
@@ -65,14 +59,9 @@ export default function Home() {
           또와는 사장님 대신 전화를 받고, 설명하고, 예약까지 처리하는 AI 직원입니다.
         </p>
         <div className="mt-8 flex gap-3">
-          <a href={authed ? '/app' : '/login'} className="rounded-md bg-[#2bbf4b] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#35cf57]">
+          <a href={authed ? '/app' : '/login'} className="rounded-md bg-[#2bbf4b] px-6 py-2.5 text-sm font-semibold text-white hover:bg-[#35cf57]">
             시작하기
           </a>
-          {!authed && (
-            <a href="/login" className="rounded-md border border-white/20 px-5 py-2.5 text-sm font-medium text-white/90 hover:border-white/40">
-              로그인
-            </a>
-          )}
         </div>
       </section>
 
@@ -141,7 +130,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="relative z-10 mx-auto w-full max-w-5xl px-6 pt-32 pb-6">
+      <section className="relative z-10 mx-auto w-full max-w-5xl px-6 py-20">
         <div className="mx-auto mb-5 w-fit rounded-md border border-white/15 bg-white/[0.04] px-3 py-1 text-xs text-white/80">FAQs</div>
         <h2 className="mx-auto mb-10 max-w-4xl text-center text-3xl font-bold leading-tight sm:text-6xl">
           또와AI 자주 묻는 질문
@@ -190,8 +179,8 @@ export default function Home() {
         .stars,
         .stars:after {
           content: '';
-          position: absolute;
-          inset: -2000px;
+          position: fixed;
+          inset: 0;
           background-image: radial-gradient(2px 2px at 40px 60px, rgba(255, 255, 255, 0.8), transparent),
             radial-gradient(1.5px 1.5px at 130px 160px, rgba(255, 255, 255, 0.7), transparent),
             radial-gradient(1.8px 1.8px at 220px 300px, rgba(255, 255, 255, 0.65), transparent),
