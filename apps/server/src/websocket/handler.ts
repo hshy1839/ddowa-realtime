@@ -495,8 +495,13 @@ function normalizePhone(input: string): string {
 }
 
 function extractPhone(text: string): string | null {
-  const m = text.match(/01[0-9][\s-]?[0-9]{3,4}[\s-]?[0-9]{4}/);
-  return m ? normalizePhone(m[0]) : null;
+  const raw = text || '';
+  const m = raw.match(/(?:\+?82[\s-]?)?0?1[0-9][\s-]?[0-9]{3,4}[\s-]?[0-9]{4}/);
+  if (!m) return null;
+  let digits = normalizePhone(m[0]);
+  if (digits.startsWith('82')) digits = `0${digits.slice(2)}`;
+  if (digits.length > 11) digits = digits.slice(-11);
+  return digits;
 }
 
 function extractDateTimes(text: string): Date[] {
@@ -564,8 +569,32 @@ async function handleBookingCrudByPhone(session: WSSession, userTextRaw: string)
   const userText = (userTextRaw || '').trim();
   if (!userText) return null;
 
-  const hasBookingWord = /(예약|일정|스케줄|조회|확인|내역|추가|생성|등록|수정|변경|취소|삭제)/.test(userText);
-  if (!hasBookingWord) return null;
+  const hasBookingWord = /(예약|일정|스케줄|조회|확인|내역|추가|생성|등록|수정|변경|취소|삭제|잡아|잡아줘)/.test(userText);
+  if (!hasBookingWord) {
+    // 종료 직전/실시간 누락 방지: 번호+시간이 있으면 예약 생성 시도
+    const fallbackPhone = extractPhone(userText) || session.lastCustomerPhone;
+    const dts = extractDateTimes(userText);
+    if (fallbackPhone && dts.length) {
+      const contact = await findOrCreateContactByPhone(session.workspaceId, fallbackPhone);
+      const startAt = dts[0];
+      const endAt = new Date(startAt.getTime() + 30 * 60 * 1000);
+      const exists = await Booking.findOne({ workspaceId: session.workspaceId, contactId: contact._id, startAt, status: { $ne: 'cancelled' } }).lean();
+      if (!exists) {
+        await Booking.create({
+          workspaceId: session.workspaceId,
+          contactId: contact._id,
+          startAt,
+          endAt,
+          serviceName: '웹 상담',
+          status: 'confirmed',
+          memo: `auto-fallback phone:${fallbackPhone}`,
+        });
+        console.log(`[WEB][booking] fallback auto-created ${startAt.toISOString()} phone=${fallbackPhone}`);
+        return `예약을 등록했습니다. (${new Date(startAt).toLocaleString('ko-KR')})`;
+      }
+    }
+    return null;
+  }
 
   const detectedPhone = extractPhone(userText);
   const phone = detectedPhone || session.lastCustomerPhone;
