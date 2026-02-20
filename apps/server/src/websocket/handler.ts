@@ -398,9 +398,10 @@ function setupProviderListeners(session: WSSession) {
   session.provider.on('agent.complete', async () => {
     console.log(`✓ [AGENT.COMPLETE] Agent response complete`);
 
-    const bookingAssistantReply = await handleBookingCrudByPhone(session, session.fullUserTranscript);
+    const bookingAssistantReply = await handleBookingCrudByPhone(session, session.sttBuffer || session.fullUserTranscript);
     if (bookingAssistantReply) {
-      session.agentBuffer = mergeCaption(session.agentBuffer, bookingAssistantReply);
+      // CRUD 결과를 모델 응답보다 우선시해서 허위 안내 방지
+      session.agentBuffer = bookingAssistantReply;
       session.ws.send(JSON.stringify({ type: 'agent.delta', textDelta: bookingAssistantReply }));
     }
 
@@ -569,32 +570,10 @@ async function handleBookingCrudByPhone(session: WSSession, userTextRaw: string)
   const userText = (userTextRaw || '').trim();
   if (!userText) return null;
 
+  const dts = extractDateTimes(userText);
   const hasBookingWord = /(예약|일정|스케줄|조회|확인|내역|추가|생성|등록|수정|변경|취소|삭제|잡아|잡아줘)/.test(userText);
-  if (!hasBookingWord) {
-    // 종료 직전/실시간 누락 방지: 번호+시간이 있으면 예약 생성 시도
-    const fallbackPhone = extractPhone(userText) || session.lastCustomerPhone;
-    const dts = extractDateTimes(userText);
-    if (fallbackPhone && dts.length) {
-      const contact = await findOrCreateContactByPhone(session.workspaceId, fallbackPhone);
-      const startAt = dts[0];
-      const endAt = new Date(startAt.getTime() + 30 * 60 * 1000);
-      const exists = await Booking.findOne({ workspaceId: session.workspaceId, contactId: contact._id, startAt, status: { $ne: 'cancelled' } }).lean();
-      if (!exists) {
-        await Booking.create({
-          workspaceId: session.workspaceId,
-          contactId: contact._id,
-          startAt,
-          endAt,
-          serviceName: '웹 상담',
-          status: 'confirmed',
-          memo: `auto-fallback phone:${fallbackPhone}`,
-        });
-        console.log(`[WEB][booking] fallback auto-created ${startAt.toISOString()} phone=${fallbackPhone}`);
-        return `예약을 등록했습니다. (${new Date(startAt).toLocaleString('ko-KR')})`;
-      }
-    }
-    return null;
-  }
+  const hasActionWord = /(해줘|부탁|잡아줘|등록해|추가해)/.test(userText);
+  if (!hasBookingWord && !(hasActionWord && dts.length)) return null;
 
   const detectedPhone = extractPhone(userText);
   const phone = detectedPhone || session.lastCustomerPhone;
@@ -603,10 +582,10 @@ async function handleBookingCrudByPhone(session: WSSession, userTextRaw: string)
     return '예약 처리를 위해 고객 전화번호(예: 010-1234-5678)를 함께 말씀해 주세요.';
   }
 
-  const isRead = /(조회|확인|내역|보여)/.test(userText);
-  const isCreate = /(추가|생성|등록|잡아|해줘)/.test(userText) && !/(수정|변경|취소|삭제|조회|확인|내역)/.test(userText);
   const isUpdate = /(수정|변경)/.test(userText);
   const isDelete = /(취소|삭제)/.test(userText);
+  const isCreate = (/(추가|생성|등록|잡아|해줘|부탁)/.test(userText) || dts.length > 0) && !isUpdate && !isDelete;
+  const isRead = /(조회|확인|내역|보여)/.test(userText) && !isCreate;
 
   const contact = await findOrCreateContactByPhone(session.workspaceId, phone);
 
@@ -618,7 +597,6 @@ async function handleBookingCrudByPhone(session: WSSession, userTextRaw: string)
   }
 
   if (isCreate) {
-    const dts = extractDateTimes(userText);
     if (!dts.length) return '예약 추가할 날짜/시간을 말씀해 주세요. 예: 내일 오후 3시 / 2월 18일 14시';
     const startAt = dts[0];
     const endAt = new Date(startAt.getTime() + 30 * 60 * 1000);
@@ -645,7 +623,6 @@ async function handleBookingCrudByPhone(session: WSSession, userTextRaw: string)
   }
 
   if (isUpdate) {
-    const dts = extractDateTimes(userText);
     const target = await Booking.findOne({ workspaceId: session.workspaceId, contactId: contact._id, status: { $ne: 'cancelled' } }).sort({ startAt: 1 });
     if (!target) return `변경할 예약이 없습니다. 전화번호 ${phone} 기준 예약 내역을 먼저 확인해 주세요.`;
     if (!dts.length) return '예약 변경할 새 날짜/시간을 말씀해 주세요. 예: 모레 16시 / 3월 1일 오후 2시';
