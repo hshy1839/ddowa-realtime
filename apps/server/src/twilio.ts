@@ -82,7 +82,7 @@ function resamplePcm16(input: Int16Array, inputRate: number, outputRate: number)
 }
 
 export function isTwilioMediaPath(pathname: string): boolean {
-  return pathname === '/twilio/media';
+  return pathname === '/twilio/media' || pathname === '/twilio/media/' || pathname.startsWith('/twilio/media');
 }
 
 export async function findWorkspaceByTwilioNumber(calledRaw?: string): Promise<string | null> {
