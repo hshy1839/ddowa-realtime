@@ -36,7 +36,14 @@ export default function BookingsPage() {
   const fetchBookings = async () => {
     const res = await fetch('/api/bookings', { cache: 'no-store' });
     const data = await res.json();
-    setBookings((data.bookings || []) as Booking[]);
+    const list = (data.bookings || []) as Booking[];
+    setBookings(list);
+    // 예약이 있으면 가장 최근 예약 날짜로 자동 이동(조회 누락 체감 방지)
+    if (list.length > 0) {
+      const latest = new Date(list[0].startAt);
+      setSelectedDate(latest);
+      setMonthCursor(new Date(latest.getFullYear(), latest.getMonth(), 1));
+    }
   };
 
   const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
