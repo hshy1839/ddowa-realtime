@@ -15,6 +15,8 @@ export interface WSSession {
   startTime: number;
   sttBuffer: string;
   agentBuffer: string;
+  fullUserTranscript: string;
+  lastCustomerPhone: string;
 }
 
 const sessions = new Map<string, WSSession>();
@@ -129,6 +131,8 @@ export async function handleWSConnection(ws: WebSocket, token: IParsedToken | nu
     startTime: Date.now(),
     sttBuffer: '',
     agentBuffer: '',
+    fullUserTranscript: '',
+    lastCustomerPhone: '',
   };
 
   sessions.set(sessionId, session);
@@ -178,6 +182,8 @@ async function handleWSMessage(sessionId: string, message: any) {
         session.startTime = Date.now();
         session.sttBuffer = '';
         session.agentBuffer = '';
+        session.fullUserTranscript = '';
+        session.lastCustomerPhone = '';
 
         // 저지연 모드: 헬스체크는 백그라운드로 수행(통화 시작 블로킹 금지)
         geminiHealthcheck(session.ws).catch(() => undefined);
@@ -291,6 +297,12 @@ async function handleWSMessage(sessionId: string, message: any) {
           break;
         }
 
+        // 종료 시에도 누락 방지를 위해 한 번 더 자동 예약 시도
+        const bookingOnStop = await handleBookingCrudByPhone(session, session.fullUserTranscript);
+        if (bookingOnStop) {
+          session.agentBuffer = mergeCaption(session.agentBuffer, bookingOnStop);
+        }
+
         const { summary, intent } = await session.provider.endConversation();
         const durationSec = Math.floor((Date.now() - session.startTime) / 1000);
 
@@ -337,6 +349,8 @@ async function handleWSMessage(sessionId: string, message: any) {
 
         session.sttBuffer = '';
         session.agentBuffer = '';
+        session.fullUserTranscript = '';
+        session.lastCustomerPhone = '';
         session.conversationId = '';
         break;
       }
@@ -367,6 +381,9 @@ function setupProviderListeners(session: WSSession) {
     session.ws.send(JSON.stringify({ type: 'stt.delta', textDelta: event.textDelta }));
     if (event.textDelta) {
       session.sttBuffer = mergeCaption(session.sttBuffer, event.textDelta);
+      session.fullUserTranscript = [session.fullUserTranscript, event.textDelta].filter(Boolean).join('\n');
+      const detected = extractPhone(event.textDelta);
+      if (detected) session.lastCustomerPhone = detected;
     }
   });
 
@@ -381,7 +398,7 @@ function setupProviderListeners(session: WSSession) {
   session.provider.on('agent.complete', async () => {
     console.log(`✓ [AGENT.COMPLETE] Agent response complete`);
 
-    const bookingAssistantReply = await handleBookingCrudByPhone(session, session.sttBuffer);
+    const bookingAssistantReply = await handleBookingCrudByPhone(session, session.fullUserTranscript);
     if (bookingAssistantReply) {
       session.agentBuffer = mergeCaption(session.agentBuffer, bookingAssistantReply);
       session.ws.send(JSON.stringify({ type: 'agent.delta', textDelta: bookingAssistantReply }));
@@ -550,7 +567,9 @@ async function handleBookingCrudByPhone(session: WSSession, userTextRaw: string)
   const hasBookingWord = /(예약|일정|스케줄|조회|확인|내역|추가|생성|등록|수정|변경|취소|삭제)/.test(userText);
   if (!hasBookingWord) return null;
 
-  const phone = extractPhone(userText);
+  const detectedPhone = extractPhone(userText);
+  const phone = detectedPhone || session.lastCustomerPhone;
+  if (detectedPhone) session.lastCustomerPhone = detectedPhone;
   if (!phone) {
     return '예약 처리를 위해 고객 전화번호(예: 010-1234-5678)를 함께 말씀해 주세요.';
   }
@@ -574,6 +593,16 @@ async function handleBookingCrudByPhone(session: WSSession, userTextRaw: string)
     if (!dts.length) return '예약 추가할 날짜/시간을 말씀해 주세요. 예: 내일 오후 3시 / 2월 18일 14시';
     const startAt = dts[0];
     const endAt = new Date(startAt.getTime() + 30 * 60 * 1000);
+    const exists = await Booking.findOne({
+      workspaceId: session.workspaceId,
+      contactId: contact._id,
+      startAt,
+      status: { $ne: 'cancelled' },
+    }).lean();
+    if (exists) {
+      return `해당 시간 예약이 이미 있습니다. (${new Date(exists.startAt).toLocaleString('ko-KR')})`;
+    }
+
     const booking = await Booking.create({
       workspaceId: session.workspaceId,
       contactId: contact._id,
