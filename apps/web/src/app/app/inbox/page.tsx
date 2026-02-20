@@ -75,7 +75,12 @@ export default function InboxPage() {
                   <div className="min-w-0">
                     <p className="font-semibold truncate">{conv.intent || '상담'}</p>
                     <p className={`text-xs ${selectedId === conv._id ? 'text-white/70' : 'text-black/50'}`}>{new Date(conv.startedAt).toLocaleString()}</p>
-                    <p className={`text-sm truncate mt-1 ${selectedId === conv._id ? 'text-white/80' : 'text-black/65'}`}>{preview}</p>
+                    <p
+                      className={`text-sm mt-1 break-words overflow-hidden ${selectedId === conv._id ? 'text-white/80' : 'text-black/65'}`}
+                      style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any }}
+                    >
+                      {preview}
+                    </p>
                   </div>
                   <button
                     type="button"
@@ -114,11 +119,11 @@ export default function InboxPage() {
                 return (
                   <div key={msg._id}>
                     {showDateDivider && <div className="flex justify-center my-3"><span className="text-[11px] bg-white px-2 py-1 rounded-full border border-black/10 text-black/55">{dateLabel}</span></div>}
-                    <div className={`flex items-end gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`flex items-end gap-2 min-w-0 ${isUser ? 'justify-end' : 'justify-start'}`}>
                       {!isUser && <div className="h-8 w-8 rounded-full bg-white border border-black/10 text-xs grid place-items-center">AI</div>}
-                      <div className={`max-w-[78%] rounded-2xl px-3 py-2 shadow-sm ${isUser ? 'bg-black text-white rounded-br-md' : 'bg-white text-black rounded-bl-md border border-black/10'}`}>
+                      <div className={`max-w-[82%] sm:max-w-[78%] min-w-0 rounded-2xl px-3 py-2 shadow-sm ${isUser ? 'bg-black text-white rounded-br-md' : 'bg-white text-black rounded-bl-md border border-black/10'}`}>
                         {!isUser && <p className="text-[11px] text-black/50 mb-1">상담사</p>}
-                        <p className="text-sm whitespace-pre-wrap break-words">{msg.text || '(빈 메시지)'}</p>
+                        <p className="text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{msg.text || '(빈 메시지)'}</p>
                         <div className={`text-[10px] mt-1 opacity-60 flex items-center gap-1 ${isUser ? 'justify-end' : 'justify-start'}`}>
                           <span>{msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString() : ''}</span>
                           {isUser && <span>읽음</span>}
