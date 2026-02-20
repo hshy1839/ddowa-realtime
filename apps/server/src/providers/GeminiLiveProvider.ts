@@ -164,9 +164,16 @@ export class GeminiLiveProvider extends EventEmitter implements IAgentProvider {
 
   async endConversation(): Promise<{ summary: string; intent: string }> {
     const summary = this.messages.map((m) => `${m.role}: ${m.content}`).join('\n');
+    const text = summary || '';
+
+    let intent = '일반 문의';
+    if (/(예약|일정|스케줄|방문|시간)/.test(text)) intent = '예약 문의';
+    else if (/(상담|문의|질문|도움)/.test(text)) intent = '상담 문의';
+    else if (/(가격|요금|비용|위치|영업시간|안내)/.test(text)) intent = '안내 문의';
+
     return {
       summary,
-      intent: 'customer_inquiry',
+      intent,
     };
   }
 

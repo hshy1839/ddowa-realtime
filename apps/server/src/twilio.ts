@@ -1,5 +1,5 @@
 import { WebSocket } from 'ws';
-import { AgentConfig, Contact, Conversation, Message, Workspace } from './models/index.js';
+import { AgentConfig, Booking, Contact, Conversation, Message, Workspace } from './models/index.js';
 import { GeminiLiveProvider } from './providers/GeminiLiveProvider.js';
 
 function normalizePhone(input?: string): string {
@@ -79,6 +79,59 @@ function resamplePcm16(input: Int16Array, inputRate: number, outputRate: number)
     out[i] = Math.round(input[i0] * (1 - frac) + input[i1] * frac);
   }
   return out;
+}
+
+function extractDateTimes(text: string): Date[] {
+  const now = new Date();
+  const out: Date[] = [];
+
+  const regexes = [
+    /(오늘|내일|모레)\s*(오전|오후)?\s*(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분?)?/g,
+    /(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*(오전|오후)?\s*(\d{1,2})\s*(?:시|:)(\d{1,2})?/g,
+    /(\d{1,2})[\/-](\d{1,2})\s*(오전|오후)?\s*(\d{1,2})\s*(?:시|:)(\d{1,2})?/g,
+  ];
+
+  let m: RegExpExecArray | null;
+
+  while ((m = regexes[0].exec(text)) !== null) {
+    const [_, dayWord, ampm, hRaw, miRaw] = m;
+    let h = Number(hRaw);
+    if (ampm === '오후' && h < 12) h += 12;
+    if (ampm === '오전' && h === 12) h = 0;
+    const dayOffset = dayWord === '내일' ? 1 : dayWord === '모레' ? 2 : 0;
+    const dt = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset, h, Number(miRaw || 0));
+    if (!Number.isNaN(dt.getTime())) out.push(dt);
+  }
+
+  while ((m = regexes[1].exec(text)) !== null) {
+    const [_, mo, d, ampm, hRaw, miRaw] = m;
+    let h = Number(hRaw);
+    if (ampm === '오후' && h < 12) h += 12;
+    if (ampm === '오전' && h === 12) h = 0;
+    const dt = new Date(now.getFullYear(), Number(mo) - 1, Number(d), h, Number(miRaw || 0));
+    if (dt.getTime() < now.getTime()) dt.setFullYear(now.getFullYear() + 1);
+    if (!Number.isNaN(dt.getTime())) out.push(dt);
+  }
+
+  while ((m = regexes[2].exec(text)) !== null) {
+    const [_, mo, d, ampm, hRaw, miRaw] = m;
+    let h = Number(hRaw);
+    if (ampm === '오후' && h < 12) h += 12;
+    if (ampm === '오전' && h === 12) h = 0;
+    const dt = new Date(now.getFullYear(), Number(mo) - 1, Number(d), h, Number(miRaw || 0));
+    if (dt.getTime() < now.getTime()) dt.setFullYear(now.getFullYear() + 1);
+    if (!Number.isNaN(dt.getTime())) out.push(dt);
+  }
+
+  return out.sort((a, b) => a.getTime() - b.getTime());
+}
+
+function classifyConversation(summary: string): { intent: string; title: string } {
+  const t = (summary || '').toLowerCase();
+  if (/(예약|일정|스케줄|방문|시간)/.test(summary)) return { intent: '예약 문의', title: '예약 문의' };
+  if (/(상담|문의|질문|도움)/.test(summary)) return { intent: '상담 문의', title: '상담 문의' };
+  if (/(가격|요금|비용|위치|영업시간|안내)/.test(summary)) return { intent: '안내 문의', title: '안내 문의' };
+  return { intent: '일반 문의', title: '일반 문의' };
 }
 
 export function isTwilioMediaPath(pathname: string): boolean {
@@ -231,18 +284,61 @@ export async function handleTwilioMediaWS(ws: WebSocket, reqUrl: string) {
 
   const finalize = async () => {
     try {
-      const { summary, intent } = await provider.endConversation();
+      const { summary, intent: rawIntent } = await provider.endConversation();
       const durationSec = Math.floor((Date.now() - startedAt) / 1000);
+
+      if (sttBuffer.trim()) await Message.create({ conversationId, role: 'user', text: sttBuffer.trim(), createdAt: new Date() });
+      if (agentBuffer.trim()) await Message.create({ conversationId, role: 'agent', text: agentBuffer.trim(), createdAt: new Date() });
+
+      const classified = classifyConversation(summary || '');
+      let finalSummary = summary || '';
+      let finalIntent = rawIntent && rawIntent !== 'customer_inquiry' ? rawIntent : classified.intent;
+
+      // 전화 고객 번호(from)를 기준으로 예약 자동 생성
+      const userTextForBooking = [summary || '', sttBuffer || ''].join('\n');
+      const hasBookingRequest = /(예약|일정|스케줄|잡아|등록|추가)/.test(userTextForBooking) && !/(취소|삭제|변경|수정|조회|확인)/.test(userTextForBooking);
+      if (hasBookingRequest && contact?._id) {
+        const dts = extractDateTimes(userTextForBooking);
+        if (dts.length) {
+          const startAt = dts[0];
+          const endAt = new Date(startAt.getTime() + 30 * 60 * 1000);
+          const exists = await Booking.findOne({
+            workspaceId,
+            contactId: contact._id,
+            startAt,
+            status: { $ne: 'cancelled' },
+          }).lean();
+
+          if (!exists) {
+            await Booking.create({
+              workspaceId,
+              contactId: contact._id,
+              startAt,
+              endAt,
+              serviceName: '전화 상담',
+              status: 'confirmed',
+              memo: `auto-booking phone:${normalizePhone(from)}`,
+            });
+            finalSummary = `${finalSummary}\n[자동예약] ${startAt.toLocaleString('ko-KR')} 예약 생성 완료`;
+            finalIntent = '예약 문의';
+          }
+        }
+      }
+
       await Conversation.findByIdAndUpdate(conversationId, {
         status: 'completed',
         endedAt: new Date(),
         durationSec,
-        summary,
-        intent,
+        summary: finalSummary,
+        intent: finalIntent,
+        meta: {
+          from,
+          title: classified.title,
+        },
       });
-      if (sttBuffer.trim()) await Message.create({ conversationId, role: 'user', text: sttBuffer.trim(), createdAt: new Date() });
-      if (agentBuffer.trim()) await Message.create({ conversationId, role: 'agent', text: agentBuffer.trim(), createdAt: new Date() });
-    } catch {}
+    } catch (e: any) {
+      console.error('[Twilio][finalize] error:', e?.message || e);
+    }
     try {
       await provider.disconnect();
     } catch {}
