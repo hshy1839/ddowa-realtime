@@ -619,6 +619,7 @@ async function handleBookingCrudByPhone(session: WSSession, userTextRaw: string)
       status: 'confirmed',
       memo: `phone:${phone}`,
     });
+    console.log(`[WEB][booking] created id=${booking._id} workspace=${session.workspaceId} contact=${contact._id} at=${startAt.toISOString()}`);
     return `예약을 등록했습니다. (${new Date(booking.startAt).toLocaleString('ko-KR')})`;
   }
 

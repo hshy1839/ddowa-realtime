@@ -63,7 +63,7 @@ export default function InboxPage() {
   const selected = useMemo(() => conversations.find((c) => c._id === selectedId), [conversations, selectedId]);
 
   return (
-    <div className="h-[calc(100vh-140px)] grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <div className="h-[calc(100vh-140px)] min-h-0 grid grid-cols-1 lg:grid-cols-3 gap-4">
       <section className="lg:col-span-1 rounded-2xl border border-black/10 bg-white p-4 overflow-y-auto">
         <h1 className="text-2xl font-bold mb-4">받은 메시지</h1>
         <div className="space-y-2">
@@ -100,7 +100,7 @@ export default function InboxPage() {
         </div>
       </section>
 
-      <section className="lg:col-span-2 rounded-2xl border border-black/10 bg-[#eef2f5] p-4 flex flex-col">
+      <section className="lg:col-span-2 rounded-2xl border border-black/10 bg-[#eef2f5] p-4 flex flex-col min-h-0 overflow-hidden">
         {selected ? (
           <>
             <div className="mb-3 rounded-xl bg-white px-4 py-3 border border-black/10">
@@ -108,7 +108,7 @@ export default function InboxPage() {
               <p className="text-xs text-black/50">{new Date(selected.startedAt).toLocaleString()} · {selected.durationSec || 0}초</p>
             </div>
 
-            <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-3 pr-1">
               {(selected.messages || []).map((msg, idx) => {
                 const isUser = msg.role === 'user';
                 const dateLabel = msg.createdAt ? new Date(msg.createdAt).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' }) : '';

@@ -215,6 +215,7 @@ export async function handleTwilioMediaWS(ws: WebSocket, reqUrl: string) {
   let greeted = false;
   let inboundMediaCount = 0;
   let autoBooked = false;
+  let bookingProcessingNotified = false;
 
   const contact = from
     ? await Contact.findOneAndUpdate(
@@ -260,8 +261,16 @@ export async function handleTwilioMediaWS(ws: WebSocket, reqUrl: string) {
     const hasBookingRequest = /(예약|일정|스케줄|잡아|등록|추가)/.test(text) && !/(취소|삭제|변경|수정|조회\s*만)/.test(text);
     if (!hasBookingRequest) return false;
 
+    if (!bookingProcessingNotified) {
+      bookingProcessingNotified = true;
+      await provider.sendTextTurn('예약 정보를 확인 중입니다. 잠시만 기다려주세요.');
+    }
+
     const dts = extractDateTimes(text);
-    if (!dts.length) return false;
+    if (!dts.length) {
+      console.log('[Twilio][booking] datetime parse failed, transcript=', text.slice(0, 200));
+      return false;
+    }
 
     const startAt = dts[0];
     const endAt = startAt;
