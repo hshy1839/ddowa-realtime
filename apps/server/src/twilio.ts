@@ -25,11 +25,11 @@ function base64ToPCM16(base64: string): Int16Array {
 
 function muLawDecodeByte(muLawByte: number): number {
   const MULAW_BIAS = 0x84;
-  let mu = (~muLawByte) & 0xff;
+  const mu = (~muLawByte) & 0xff;
   const sign = mu & 0x80;
   const exponent = (mu >> 4) & 0x07;
   const mantissa = mu & 0x0f;
-  let sample = ((mantissa << 4) + 0x08) << exponent;
+  let sample = ((mantissa << 3) + MULAW_BIAS) << exponent;
   sample -= MULAW_BIAS;
   return sign ? -sample : sample;
 }
@@ -159,6 +159,7 @@ export async function handleTwilioMediaWS(ws: WebSocket, reqUrl: string) {
   let agentBuffer = '';
   let startedAt = Date.now();
   let greeted = false;
+  let inboundMediaCount = 0;
 
   const contact = from
     ? await Contact.findOneAndUpdate(
@@ -261,6 +262,10 @@ export async function handleTwilioMediaWS(ws: WebSocket, reqUrl: string) {
       } else if (msg.event === 'media') {
         const payload = msg.media?.payload || '';
         if (!payload) return;
+        inboundMediaCount += 1;
+        if (inboundMediaCount % 50 === 0) {
+          console.log(`[Twilio][media] inbound chunks=${inboundMediaCount}`);
+        }
         const pcm16_8k = mulawBase64ToPcm16(payload);
         // Gemini Live 인식 안정화를 위해 전화 8k PCM을 16k로 업샘플링 후 전달
         const pcm16_16k = resamplePcm16(pcm16_8k, 8000, 16000);
