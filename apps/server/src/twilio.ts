@@ -192,6 +192,7 @@ export async function handleTwilioMediaWS(ws: WebSocket, reqUrl: string) {
 
   provider.on('stt.delta', (event: any) => {
     sttBuffer = mergeCaption(sttBuffer, event.textDelta || '');
+    if (event?.textDelta) console.log(`[Twilio][stt] ${String(event.textDelta).slice(0, 80)}`);
   });
 
   provider.on('agent.delta', (event: any) => {
@@ -260,8 +261,10 @@ export async function handleTwilioMediaWS(ws: WebSocket, reqUrl: string) {
       } else if (msg.event === 'media') {
         const payload = msg.media?.payload || '';
         if (!payload) return;
-        const pcm16 = mulawBase64ToPcm16(payload);
-        await provider.sendAudioChunk(pcm16ToBase64(pcm16), 8000, Date.now());
+        const pcm16_8k = mulawBase64ToPcm16(payload);
+        // Gemini Live 인식 안정화를 위해 전화 8k PCM을 16k로 업샘플링 후 전달
+        const pcm16_16k = resamplePcm16(pcm16_8k, 8000, 16000);
+        await provider.sendAudioChunk(pcm16ToBase64(pcm16_16k), 16000, Date.now());
       } else if (msg.event === 'stop') {
         console.log(`[Twilio][media] stop streamSid=${msg.streamSid || streamSid}`);
         await finalize();
