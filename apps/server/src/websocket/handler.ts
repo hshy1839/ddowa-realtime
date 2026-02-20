@@ -247,6 +247,12 @@ async function handleWSMessage(sessionId: string, message: any) {
           })
         );
 
+        // 로컬/관리자 페이지 테스트용: 상담 시작 버튼 직후 에이전트가 먼저 인사
+        const maybeSendTextTurn = (session.provider as any)?.sendTextTurn;
+        if (typeof maybeSendTextTurn === 'function') {
+          await maybeSendTextTurn.call(session.provider, '안녕하세요, 상담 시작되었습니다. 무엇을 도와드릴까요?');
+        }
+
         break;
       }
 
