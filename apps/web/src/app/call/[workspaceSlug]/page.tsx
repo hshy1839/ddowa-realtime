@@ -34,7 +34,7 @@ export default function PublicCallPage() {
   const [micError, setMicError] = useState<string>();
   const [speechRate, setSpeechRate] = useState(1.0);
   const [micInputGain, setMicInputGain] = useState(1.0);
-  const [micNoiseGate, setMicNoiseGate] = useState(0.008);
+  const [micNoiseGate, setMicNoiseGate] = useState(0.0);
   const [micSelfMonitor, setMicSelfMonitor] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -107,7 +107,7 @@ export default function PublicCallPage() {
           nextPlaybackTimeRef.current = 0;
           setSpeechRate(Number(message.speechRate) || 1.0);
           setMicInputGain(Number(message.micInputGain) || 1.0);
-          setMicNoiseGate(Number(message.micNoiseGate) || 0.008);
+          setMicNoiseGate(Number(message.micNoiseGate) || 0.0);
           setMicSelfMonitor(Boolean(message.micSelfMonitor));
           return;
         }
@@ -117,7 +117,7 @@ export default function PublicCallPage() {
           nextPlaybackTimeRef.current = 0;
           setSpeechRate(Number(message.speechRate) || 1.0);
           setMicInputGain(Number(message.micInputGain) || 1.0);
-          setMicNoiseGate(Number(message.micNoiseGate) || 0.008);
+          setMicNoiseGate(Number(message.micNoiseGate) || 0.0);
           setMicSelfMonitor(Boolean(message.micSelfMonitor));
           return;
         }

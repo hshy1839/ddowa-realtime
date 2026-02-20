@@ -19,7 +19,7 @@ interface UseMicrophoneInput {
 }
 
 const TARGET_SAMPLE_RATE = 16000;
-const CHUNK_SIZE = 2048;
+const CHUNK_SIZE = 512;
 
 export const useMicrophoneInput = (
   onAudioChunk?: (pcm16Base64: string, sampleRate: number, seq: number) => void,

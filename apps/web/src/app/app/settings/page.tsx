@@ -36,7 +36,7 @@ const defaultConfig: AgentConfig = {
   twilioPhoneNumber: '',
   speechRate: 1.0,
   micInputGain: 1.0,
-  micNoiseGate: 0.008,
+  micNoiseGate: 0.0,
   micSelfMonitor: false,
 };
 

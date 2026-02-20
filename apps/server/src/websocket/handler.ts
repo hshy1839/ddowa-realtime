@@ -179,8 +179,8 @@ async function handleWSMessage(sessionId: string, message: any) {
         session.sttBuffer = '';
         session.agentBuffer = '';
 
-        // (요구사항) 통화 시작 시 Gemini API 연결 상태를 1회 확인
-        await geminiHealthcheck(session.ws);
+        // 저지연 모드: 헬스체크는 백그라운드로 수행(통화 시작 블로킹 금지)
+        geminiHealthcheck(session.ws).catch(() => undefined);
 
         // Create conversation in MongoDB
         const conversation = await Conversation.create({
@@ -242,7 +242,7 @@ async function handleWSMessage(sessionId: string, message: any) {
             conversationId: session.conversationId,
             speechRate: (mergedConfig as any).speechRate ?? 1.0,
             micInputGain: (mergedConfig as any).micInputGain ?? 1.0,
-            micNoiseGate: (mergedConfig as any).micNoiseGate ?? 0.008,
+            micNoiseGate: (mergedConfig as any).micNoiseGate ?? 0.0,
             micSelfMonitor: (mergedConfig as any).micSelfMonitor ?? false,
           })
         );
@@ -270,7 +270,6 @@ async function handleWSMessage(sessionId: string, message: any) {
           break;
         }
 
-        console.log(`🎤 [AUDIO] ${sessionId} sending audio chunk (${pcm16ChunkBase64.length} bytes)`);
         try {
           await session.provider.sendAudioChunk(pcm16ChunkBase64, sampleRate, seq);
         } catch (audioError) {

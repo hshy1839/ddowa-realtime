@@ -100,11 +100,11 @@ export class GeminiRealtimeClient extends EventEmitter {
         realtimeInputConfig: {
           automaticActivityDetection: {
             disabled: false,
-            startOfSpeechSensitivity: 'START_SENSITIVITY_LOW',
+            // 초저지연 프로필: 말 시작을 더 공격적으로 감지
+            startOfSpeechSensitivity: 'START_SENSITIVITY_HIGH',
             endOfSpeechSensitivity: 'END_SENSITIVITY_HIGH',
-            // 전화/웹 공통: 응답 시작을 빠르게, 첫 음절 유실 방지
-            silenceDurationMs: Number(process.env.GEMINI_VAD_SILENCE_MS || 350),
-            prefixPaddingMs: Number(process.env.GEMINI_VAD_PREFIX_MS || 260),
+            silenceDurationMs: Number(process.env.GEMINI_VAD_SILENCE_MS || 180),
+            prefixPaddingMs: Number(process.env.GEMINI_VAD_PREFIX_MS || 180),
           },
           turnCoverage: 'TURN_INCLUDES_ONLY_ACTIVITY',
         },

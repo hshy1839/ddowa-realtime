@@ -19,7 +19,7 @@ export default function CallPage() {
   const [wsReady, setWsReady] = useState(false);
   const [speechRate, setSpeechRate] = useState(1.0);
   const [micInputGain, setMicInputGain] = useState(1.0);
-  const [micNoiseGate, setMicNoiseGate] = useState(0.008);
+  const [micNoiseGate, setMicNoiseGate] = useState(0.0);
   const [micSelfMonitor, setMicSelfMonitor] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -27,6 +27,7 @@ export default function CallPage() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const conversationIdRef = useRef<string>('');
   const nextPlaybackTimeRef = useRef(0);
+  const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
 
   const { isRecording, startRecording, stopRecording, error: micError, volumeLevel } = useMicrophoneInput((pcm16Base64, sampleRate, seq) => {
     const ws = wsRef.current;
@@ -51,10 +52,18 @@ export default function CallPage() {
         setConversationId(message.conversationId);
         setSpeechRate(Number(message.speechRate) || 1.0);
         setMicInputGain(Number(message.micInputGain) || 1.0);
-        setMicNoiseGate(Number(message.micNoiseGate) || 0.008);
+        setMicNoiseGate(Number(message.micNoiseGate) || 0.0);
         setMicSelfMonitor(Boolean(message.micSelfMonitor));
         setIsCallActive(true);
-      } else if (message.type === 'stt.delta') setSttText(message.textDelta || '');
+      } else if (message.type === 'stt.delta') {
+        setSttText(message.textDelta || '');
+        // barge-in: 사용자가 말하면 큐에 쌓인 TTS 즉시 중단
+        activeSourcesRef.current.forEach((s) => {
+          try { s.stop(); } catch {}
+        });
+        activeSourcesRef.current.clear();
+        if (audioContextRef.current) nextPlaybackTimeRef.current = audioContextRef.current.currentTime;
+      }
       else if (message.type === 'agent.delta') setAgentText(message.textDelta || '');
       else if (message.type === 'tts.audio') playAudio(message.pcm16ChunkBase64, message.sampleRate);
       else if (message.type === 'call.ended') {
@@ -115,8 +124,12 @@ export default function CallPage() {
       source.buffer = buffer;
       source.playbackRate.value = speechRateRef.current;
       source.connect(audioContext.destination);
+      source.onended = () => {
+        activeSourcesRef.current.delete(source);
+      };
+      activeSourcesRef.current.add(source);
       const now = audioContext.currentTime;
-      const lead = 0.04;
+      const lead = 0.02;
       const startAt = Math.max(now + lead, nextPlaybackTimeRef.current || now + lead);
       source.start(startAt);
       nextPlaybackTimeRef.current = startAt + buffer.duration / Math.max(0.8, speechRateRef.current);
