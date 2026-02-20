@@ -16,6 +16,7 @@ interface Conversation {
   summary?: string;
   intent?: string;
   startedAt: string;
+  contactId?: string;
   messages?: MessageItem[];
 }
 
@@ -75,6 +76,7 @@ export default function InboxPage() {
                   <div className="min-w-0">
                     <p className="font-semibold truncate">{conv.intent || '상담'}</p>
                     <p className={`text-xs ${selectedId === conv._id ? 'text-white/70' : 'text-black/50'}`}>{new Date(conv.startedAt).toLocaleString()}</p>
+                    <p className={`text-[11px] mt-1 font-mono break-all ${selectedId === conv._id ? 'text-white/70' : 'text-black/55'}`}>contactId: {conv.contactId || '-'}</p>
                     <p
                       className={`text-sm mt-1 break-words overflow-hidden ${selectedId === conv._id ? 'text-white/80' : 'text-black/65'}`}
                       style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any }}
@@ -106,6 +108,7 @@ export default function InboxPage() {
             <div className="mb-3 rounded-xl bg-white px-4 py-3 border border-black/10">
               <p className="font-semibold">{selected.intent || '상담'}</p>
               <p className="text-xs text-black/50">{new Date(selected.startedAt).toLocaleString()} · {selected.durationSec || 0}초</p>
+              <p className="text-[11px] text-black/60 font-mono mt-1 break-all">contactId: {selected.contactId || '-'}</p>
             </div>
 
             <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-3 pr-1">
