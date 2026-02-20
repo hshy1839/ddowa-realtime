@@ -35,6 +35,7 @@ export default function BookingsPage() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [monthCursor, setMonthCursor] = useState(new Date());
   const [editing, setEditing] = useState<Booking | null>(null);
+  const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     startAt: '',
     serviceName: '',
@@ -72,6 +73,12 @@ export default function BookingsPage() {
       .sort((a, b) => +new Date(a.startAt) - +new Date(b.startAt));
   }, [bookings, selectedDate]);
 
+  const visibleBookings = useMemo(() => {
+    return [...bookings]
+      .sort((a, b) => +new Date(a.startAt) - +new Date(b.startAt))
+      .slice(0, 100);
+  }, [bookings]);
+
   const daysInGrid = useMemo(() => {
     const y = monthCursor.getFullYear();
     const m = monthCursor.getMonth();
@@ -94,6 +101,7 @@ export default function BookingsPage() {
       phone: '',
       status: 'pending',
     });
+    setShowForm(true);
   };
 
   const openEdit = (b: Booking) => {
@@ -105,6 +113,7 @@ export default function BookingsPage() {
       phone: b.phone || '',
       status: b.status,
     });
+    setShowForm(true);
   };
 
   const submit = async () => {
@@ -134,6 +143,7 @@ export default function BookingsPage() {
 
     await fetchBookings();
     setEditing(null);
+    setShowForm(false);
     setForm({ startAt: '', serviceName: '', memo: '', phone: '', status: 'pending' });
   };
 
@@ -218,25 +228,19 @@ export default function BookingsPage() {
           })}
         </div>
 
-        <button
-          onClick={() => openCreate(selectedDate)}
-          className="mt-4 w-full h-11 rounded-xl bg-[#2bbf4b] text-white font-semibold hover:bg-[#35cf57] transition"
-        >
-          예약 추가
-        </button>
+        <div className="mt-4 text-xs text-white/60">우측 하단 + 버튼으로 예약을 추가할 수 있습니다.</div>
       </section>
 
       <section className="rounded-3xl border border-white/15 bg-[#131923] p-4 sm:p-5 shadow-[0_20px_40px_rgba(0,0,0,0.35)]">
-        <h2 className="text-lg font-semibold text-white mb-4">
-          {selectedDate.toLocaleDateString()} 예약 목록
-        </h2>
+        <h2 className="text-lg font-semibold text-white mb-2">예약 목록 (최대 100건)</h2>
+        <p className="text-xs text-white/60 mb-4">선택일 예약 {selectedDayBookings.length}건 · 전체 최신순 표시</p>
 
-        <div className="space-y-2.5 max-h-[310px] overflow-y-auto pr-1 mb-5">
-          {selectedDayBookings.length === 0 ? (
+        <div className="space-y-2.5 max-h-[620px] overflow-y-auto pr-1 mb-1">
+          {visibleBookings.length === 0 ? (
             <p className="text-white/55 text-sm rounded-xl border border-white/10 bg-[#1a212d] p-4">예약이 없습니다.</p>
           ) : (
-            selectedDayBookings.map((b) => (
-              <div key={b._id} className="border border-white/10 bg-[#1a212d] rounded-xl p-3.5">
+            visibleBookings.map((b) => (
+              <div key={b._id} className={`border rounded-xl p-3.5 ${dayKey(new Date(b.startAt)) === dayKey(selectedDate) ? 'border-[#2bbf4b]/55 bg-[#1d2a22]' : 'border-white/10 bg-[#1a212d]'}`}>
                 <div className="flex justify-between items-start gap-3">
                   <div className="min-w-0">
                     <p className="font-semibold text-white truncate">{b.serviceName || '서비스'}</p>
@@ -259,56 +263,65 @@ export default function BookingsPage() {
           )}
         </div>
 
-        <div className="border border-white/12 bg-[#1a212d] rounded-2xl p-4">
-          <h3 className="font-semibold text-white mb-3">{editing ? '예약 수정' : '예약 추가'}</h3>
-          <div className="grid sm:grid-cols-1 gap-2 mb-2">
+      </section>
+
+      <button
+        type="button"
+        onClick={() => openCreate(selectedDate)}
+        className="fixed bottom-7 right-7 z-30 h-14 w-14 rounded-full bg-[#2bbf4b] text-white text-3xl leading-none shadow-[0_12px_30px_rgba(43,191,75,0.45)] hover:bg-[#35cf57]"
+      >
+        +
+      </button>
+
+      {showForm && (
+        <div className="fixed inset-0 z-40 bg-black/55 grid place-items-center p-4" onClick={() => setShowForm(false)}>
+          <div className="w-full max-w-md rounded-2xl border border-white/20 bg-[#11151d] p-5" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-semibold text-white mb-3">{editing ? '예약 수정' : '예약 추가'}</h3>
+            <div className="grid sm:grid-cols-1 gap-2 mb-2">
+              <input
+                type="datetime-local"
+                value={form.startAt}
+                onChange={(e) => setForm((p) => ({ ...p, startAt: e.target.value }))}
+                className="px-3 py-2.5 rounded-lg border border-white/20 bg-[#0f141d] text-white"
+              />
+            </div>
             <input
-              type="datetime-local"
-              value={form.startAt}
-              onChange={(e) => setForm((p) => ({ ...p, startAt: e.target.value }))}
-              className="px-3 py-2.5 rounded-lg border border-white/20 bg-[#0f141d] text-white"
+              placeholder="서비스명"
+              value={form.serviceName}
+              onChange={(e) => setForm((p) => ({ ...p, serviceName: e.target.value }))}
+              className="w-full px-3 py-2.5 rounded-lg border border-white/20 bg-[#0f141d] text-white mb-2"
             />
-          </div>
-          <input
-            placeholder="서비스명"
-            value={form.serviceName}
-            onChange={(e) => setForm((p) => ({ ...p, serviceName: e.target.value }))}
-            className="w-full px-3 py-2.5 rounded-lg border border-white/20 bg-[#0f141d] text-white mb-2"
-          />
-          <input
-            placeholder="고객 전화번호 (예: 01012345678)"
-            value={form.phone}
-            onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))}
-            className="w-full px-3 py-2.5 rounded-lg border border-white/20 bg-[#0f141d] text-white mb-2"
-          />
-          <textarea
-            placeholder="메모"
-            value={form.memo}
-            onChange={(e) => setForm((p) => ({ ...p, memo: e.target.value }))}
-            className="w-full px-3 py-2.5 rounded-lg border border-white/20 bg-[#0f141d] text-white mb-2"
-            rows={3}
-          />
-          <select
-            value={form.status}
-            onChange={(e) => setForm((p) => ({ ...p, status: e.target.value as Booking['status'] }))}
-            className="w-full px-3 py-2.5 rounded-lg border border-white/20 bg-[#0f141d] text-white mb-3"
-          >
-            {statusList.map((s) => (
-              <option key={s} value={s}>{statusLabel[s]}</option>
-            ))}
-          </select>
-          <div className="flex gap-2">
-            <button onClick={submit} className="px-4 py-2 rounded-lg bg-[#2bbf4b] text-white font-semibold hover:bg-[#35cf57]">
-              {editing ? '수정 저장' : '추가 저장'}
-            </button>
-            {editing && (
-              <button onClick={() => { setEditing(null); openCreate(selectedDate); }} className="px-4 py-2 rounded-lg border border-white/25 text-white/90 hover:bg-white/10">
-                취소
+            <input
+              placeholder="고객 전화번호 (예: 01012345678)"
+              value={form.phone}
+              onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))}
+              className="w-full px-3 py-2.5 rounded-lg border border-white/20 bg-[#0f141d] text-white mb-2"
+            />
+            <textarea
+              placeholder="메모"
+              value={form.memo}
+              onChange={(e) => setForm((p) => ({ ...p, memo: e.target.value }))}
+              className="w-full px-3 py-2.5 rounded-lg border border-white/20 bg-[#0f141d] text-white mb-2"
+              rows={3}
+            />
+            <select
+              value={form.status}
+              onChange={(e) => setForm((p) => ({ ...p, status: e.target.value as Booking['status'] }))}
+              className="w-full px-3 py-2.5 rounded-lg border border-white/20 bg-[#0f141d] text-white mb-3"
+            >
+              {statusList.map((s) => (
+                <option key={s} value={s}>{statusLabel[s]}</option>
+              ))}
+            </select>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setShowForm(false)} className="px-4 py-2 rounded-lg border border-white/25 text-white/90 hover:bg-white/10">취소</button>
+              <button onClick={submit} className="px-4 py-2 rounded-lg bg-[#2bbf4b] text-white font-semibold hover:bg-[#35cf57]">
+                {editing ? '수정 저장' : '추가 저장'}
               </button>
-            )}
+            </div>
           </div>
         </div>
-      </section>
+      )}
     </div>
   );
 }

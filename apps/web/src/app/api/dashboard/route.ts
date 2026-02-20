@@ -18,7 +18,7 @@ export async function GET(_request: NextRequest) {
     const [conversations, contactsCount, completedBookings] = await Promise.all([
       Conversation.find({ workspaceId: token.workspaceId }).sort({ startedAt: -1 }).lean(),
       Contact.countDocuments({ workspaceId: token.workspaceId }),
-      Booking.countDocuments({ workspaceId: token.workspaceId, status: 'completed' }),
+      Booking.countDocuments({ workspaceId: token.workspaceId, status: { $in: ['confirmed', 'completed'] } }),
     ]);
 
     const totalConsultations = conversations.length;

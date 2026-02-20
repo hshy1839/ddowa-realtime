@@ -13,10 +13,13 @@ type DashboardData = {
   recentActivities: { id: string; text: string; at: string }[];
 };
 
+type Period = 'day' | 'week' | 'month';
+
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [period, setPeriod] = useState<Period>('day');
 
   const fetchDashboard = async () => {
     try {
@@ -46,7 +49,34 @@ export default function DashboardPage() {
     [data]
   );
 
-  const trend = data?.trend || [];
+  const trend = useMemo(() => {
+    const raw = data?.trend || [];
+    if (period === 'day') return raw;
+
+    const map = new Map<string, { date: string; label: string; count: number }>();
+
+    for (const item of raw) {
+      const d = new Date(item.date);
+      if (Number.isNaN(d.getTime())) continue;
+
+      if (period === 'week') {
+        const firstDay = new Date(d);
+        firstDay.setDate(d.getDate() - d.getDay());
+        const key = firstDay.toISOString().slice(0, 10);
+        const label = `${firstDay.getMonth() + 1}/${firstDay.getDate()}주`;
+        const prev = map.get(key);
+        map.set(key, { date: key, label, count: (prev?.count || 0) + item.count });
+      } else {
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const label = `${d.getMonth() + 1}월`;
+        const prev = map.get(key);
+        map.set(key, { date: `${key}-01`, label, count: (prev?.count || 0) + item.count });
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) => +new Date(a.date) - +new Date(b.date));
+  }, [data, period]);
+
   const max = Math.max(...trend.map((x) => x.count), 1);
 
   if (loading) {
@@ -94,22 +124,55 @@ export default function DashboardPage() {
 
       <section className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <article className="xl:col-span-2 rounded-2xl border border-white/15 p-5 bg-[#171d27]">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-white">최근 7일 상담 추이</h2>
-            <span className="text-xs text-white/60">단위: 건</span>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold text-white">
+              {period === 'day' ? '일 단위 상담 추이' : period === 'week' ? '주 단위 상담 추이' : '월 단위 상담 추이'}
+            </h2>
+            <div className="flex items-center gap-2">
+              {([
+                ['day', '일'],
+                ['week', '주'],
+                ['month', '월'],
+              ] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => setPeriod(key)}
+                  className={`px-3 py-1.5 rounded-lg text-xs border transition ${
+                    period === key
+                      ? 'bg-[#2bbf4b] border-[#2bbf4b] text-white'
+                      : 'bg-transparent border-white/20 text-white/75 hover:border-white/40'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+              <span className="text-xs text-white/60 ml-1">단위: 건</span>
+            </div>
           </div>
 
-          <div className="h-60 flex items-end gap-2 sm:gap-3">
-            {trend.map((v) => (
-              <div key={v.date} className="flex-1 flex flex-col items-center justify-end gap-2">
-                <div className="text-xs text-white/75">{v.count}</div>
-                <div
-                  className="w-full rounded-t-xl bg-gradient-to-t from-[#168d35] via-[#22b14c] to-[#6cff92]"
-                  style={{ height: `${Math.max(10, Math.round((v.count / max) * 180))}px` }}
-                />
-                <span className="text-[11px] sm:text-xs text-white/65">{v.label}</span>
-              </div>
-            ))}
+          <div className="h-80 rounded-2xl border border-white/10 bg-gradient-to-b from-[#0f1623] to-[#0d131d] p-4 sm:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+            <div className="h-full grid grid-rows-5 gap-0">
+              {[3, 2, 1, 0].map((row) => (
+                <div key={row} className="border-t border-white/10" />
+              ))}
+            </div>
+            <div className="-mt-80 h-80 flex items-end gap-2 sm:gap-3">
+              {trend.map((v) => {
+                const h = Math.max(12, Math.round((v.count / max) * 180));
+                return (
+                  <div key={v.date} className="flex-1 flex flex-col items-center justify-end gap-2">
+                    <div className="text-xs text-white/80 font-medium">{v.count}</div>
+                    <div className="w-full rounded-xl bg-white/5 p-1 border border-white/10">
+                      <div
+                        className="w-full rounded-lg bg-gradient-to-t from-[#15803d] via-[#22c55e] to-[#86efac] shadow-[0_8px_24px_rgba(34,197,94,0.35)]"
+                        style={{ height: `${h}px` }}
+                      />
+                    </div>
+                    <span className="text-[11px] sm:text-xs text-white/65">{v.label}</span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </article>
 

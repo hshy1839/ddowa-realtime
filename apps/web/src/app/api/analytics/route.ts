@@ -24,7 +24,7 @@ export async function GET(_request: NextRequest) {
 
     const avgCallSec = totalConversations ? Math.round(totalDurationSec / totalConversations) : 0;
 
-    const completedBookings = bookings.filter((b: any) => b.status === 'completed').length;
+    const completedBookings = bookings.filter((b: any) => ['confirmed', 'completed'].includes(String(b.status))).length;
     const completionRate = totalConversations ? Math.round((completedBookings / totalConversations) * 100) : 0;
 
     const ratings = conversations
