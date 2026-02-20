@@ -93,11 +93,20 @@ export async function findWorkspaceByTwilioNumber(calledRaw?: string): Promise<s
   return cfg?.workspaceId?.toString?.() || null;
 }
 
+function escapeXmlAttr(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 export function buildTwimlStreamResponse(streamUrl: string, statusCallbackUrl?: string): string {
+  const safeStreamUrl = escapeXmlAttr(streamUrl);
   const callbackAttr = statusCallbackUrl
-    ? ` statusCallback="${statusCallbackUrl}" statusCallbackMethod="POST"`
+    ? ` statusCallback="${escapeXmlAttr(statusCallbackUrl)}" statusCallbackMethod="POST"`
     : '';
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  <Connect>\n    <Stream url="${streamUrl}"${callbackAttr} />\n  </Connect>\n</Response>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  <Connect>\n    <Stream url="${safeStreamUrl}"${callbackAttr} />\n  </Connect>\n</Response>`;
 }
 
 export async function handleTwilioMediaWS(ws: WebSocket, reqUrl: string) {
