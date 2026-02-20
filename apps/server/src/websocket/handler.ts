@@ -398,7 +398,7 @@ function setupProviderListeners(session: WSSession) {
     if (event.textDelta) {
       session.sttBuffer = mergeCaption(session.sttBuffer, event.textDelta);
       session.fullUserTranscript = [session.fullUserTranscript, event.textDelta].filter(Boolean).join('\n');
-      const detected = extractPhone(event.textDelta);
+      const detected = extractPhone(session.fullUserTranscript);
       if (detected) session.lastCustomerPhone = detected;
     }
   });
@@ -554,9 +554,28 @@ function normalizePhone(input: string): string {
 
 function extractPhone(text: string): string | null {
   const raw = text || '';
+  const korToNum: Record<string, string> = {
+    공: '0', 영: '0',
+    일: '1', 하나: '1',
+    이: '2', 둘: '2',
+    삼: '3', 셋: '3',
+    사: '4', 넷: '4',
+    오: '5', 다섯: '5',
+    육: '6', 륙: '6', 여섯: '6',
+    칠: '7', 일곱: '7',
+    팔: '8', 여덟: '8',
+    구: '9', 아홉: '9',
+  };
+
+  let spoken = raw;
+  for (const [k, v] of Object.entries(korToNum)) {
+    spoken = spoken.replace(new RegExp(k, 'g'), v);
+  }
+
+  const merged = `${raw}\n${spoken}`;
 
   // 1) 공백/하이픈 포함 일반 패턴
-  const m = raw.match(/(?:\+?82[\s-]?)?0?1[0-9](?:[\s-]?\d){7,9}/);
+  const m = merged.match(/(?:\+?82[\s-]?)?0?1[0-9](?:[\s-]?\d){7,9}/);
   if (m) {
     let digits = normalizePhone(m[0]);
     if (digits.startsWith('82')) digits = `0${digits.slice(2)}`;
@@ -565,7 +584,7 @@ function extractPhone(text: string): string | null {
   }
 
   // 2) STT가 "0 1 0 8 ..."처럼 쪼개는 경우 대응
-  const compactDigits = raw.replace(/\D/g, '');
+  const compactDigits = merged.replace(/\D/g, '');
   if (!compactDigits) return null;
   const normalizedCompact = compactDigits.startsWith('82') ? `0${compactDigits.slice(2)}` : compactDigits;
   const found = normalizedCompact.match(/01\d{8,9}/);
