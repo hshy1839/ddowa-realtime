@@ -210,9 +210,11 @@ export async function handleTwilioMediaWS(ws: WebSocket, reqUrl: string) {
   let streamSid = '';
   let sttBuffer = '';
   let agentBuffer = '';
+  let fullUserTranscript = '';
   let startedAt = Date.now();
   let greeted = false;
   let inboundMediaCount = 0;
+  let autoBooked = false;
 
   const contact = from
     ? await Contact.findOneAndUpdate(
@@ -253,10 +255,54 @@ export async function handleTwilioMediaWS(ws: WebSocket, reqUrl: string) {
     agentBuffer = mergeCaption(agentBuffer, event.textDelta || '');
   });
 
+  const tryAutoCreateBooking = async (text: string) => {
+    if (autoBooked || !contact?._id) return false;
+    const hasBookingRequest = /(예약|일정|스케줄|잡아|등록|추가)/.test(text) && !/(취소|삭제|변경|수정|조회\s*만)/.test(text);
+    if (!hasBookingRequest) return false;
+
+    const dts = extractDateTimes(text);
+    if (!dts.length) return false;
+
+    const startAt = dts[0];
+    const endAt = new Date(startAt.getTime() + 30 * 60 * 1000);
+    const exists = await Booking.findOne({
+      workspaceId,
+      contactId: contact._id,
+      startAt,
+      status: { $ne: 'cancelled' },
+    }).lean();
+
+    if (exists) {
+      autoBooked = true;
+      console.log(`[Twilio][booking] already exists at ${startAt.toISOString()}`);
+      return true;
+    }
+
+    await Booking.create({
+      workspaceId,
+      contactId: contact._id,
+      startAt,
+      endAt,
+      serviceName: '전화 상담',
+      status: 'confirmed',
+      memo: `auto-booking phone:${normalizePhone(from)}`,
+    });
+
+    autoBooked = true;
+    console.log(`[Twilio][booking] auto-created ${startAt.toISOString()} contact=${contact._id}`);
+    return true;
+  };
+
   provider.on('agent.complete', async () => {
     try {
       if (sttBuffer.trim()) {
+        fullUserTranscript = [fullUserTranscript, sttBuffer.trim()].filter(Boolean).join('\n');
         await Message.create({ conversationId, role: 'user', text: sttBuffer.trim(), createdAt: new Date() });
+        try {
+          await tryAutoCreateBooking(fullUserTranscript);
+        } catch (e: any) {
+          console.error('[Twilio][booking] auto-create error:', e?.message || e);
+        }
       }
       if (agentBuffer.trim()) {
         await Message.create({ conversationId, role: 'agent', text: agentBuffer.trim(), createdAt: new Date() });
@@ -294,35 +340,17 @@ export async function handleTwilioMediaWS(ws: WebSocket, reqUrl: string) {
       let finalSummary = summary || '';
       let finalIntent = rawIntent && rawIntent !== 'customer_inquiry' ? rawIntent : classified.intent;
 
-      // 전화 고객 번호(from)를 기준으로 예약 자동 생성
-      const userTextForBooking = [summary || '', sttBuffer || ''].join('\n');
-      const hasBookingRequest = /(예약|일정|스케줄|잡아|등록|추가)/.test(userTextForBooking) && !/(취소|삭제|변경|수정|조회|확인)/.test(userTextForBooking);
-      if (hasBookingRequest && contact?._id) {
+      // 종료 시에도 한 번 더 안전하게 자동 예약 시도
+      const userTextForBooking = [fullUserTranscript || '', sttBuffer || '', summary || ''].filter(Boolean).join('\n');
+      const bookedAtFinalize = await tryAutoCreateBooking(userTextForBooking);
+      if (bookedAtFinalize) {
         const dts = extractDateTimes(userTextForBooking);
         if (dts.length) {
-          const startAt = dts[0];
-          const endAt = new Date(startAt.getTime() + 30 * 60 * 1000);
-          const exists = await Booking.findOne({
-            workspaceId,
-            contactId: contact._id,
-            startAt,
-            status: { $ne: 'cancelled' },
-          }).lean();
-
-          if (!exists) {
-            await Booking.create({
-              workspaceId,
-              contactId: contact._id,
-              startAt,
-              endAt,
-              serviceName: '전화 상담',
-              status: 'confirmed',
-              memo: `auto-booking phone:${normalizePhone(from)}`,
-            });
-            finalSummary = `${finalSummary}\n[자동예약] ${startAt.toLocaleString('ko-KR')} 예약 생성 완료`;
-            finalIntent = '예약 문의';
-          }
+          finalSummary = `${finalSummary}\n[자동예약] ${dts[0].toLocaleString('ko-KR')} 예약 생성 완료`;
+        } else {
+          finalSummary = `${finalSummary}\n[자동예약] 예약 생성 완료`;
         }
+        finalIntent = '예약 문의';
       }
 
       await Conversation.findByIdAndUpdate(conversationId, {
@@ -333,7 +361,8 @@ export async function handleTwilioMediaWS(ws: WebSocket, reqUrl: string) {
         intent: finalIntent,
         meta: {
           from,
-          title: classified.title,
+          title: finalIntent || classified.title,
+          autoBooked,
         },
       });
     } catch (e: any) {
