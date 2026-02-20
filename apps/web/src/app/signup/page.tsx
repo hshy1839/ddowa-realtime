@@ -22,9 +22,9 @@ export default function SignupPage() {
     try {
       const response = await api.post('/auth', { email, password, action: 'signup' });
       setAuthToken(response.data.token);
-      router.push('/app');
+      router.push('/');
       setTimeout(() => {
-        window.location.href = '/app';
+        window.location.href = '/';
       }, 300);
     } catch {
       setError('회원가입 실패. 다시 시도하세요.');

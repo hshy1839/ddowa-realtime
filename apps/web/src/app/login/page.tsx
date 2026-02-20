@@ -16,9 +16,9 @@ export default function LoginPage() {
     try {
       const response = await api.post('/auth', { email, password, action: 'login', rememberMe });
       setAuthToken(response.data.token, rememberMe);
-      router.push('/app');
+      router.push('/');
       setTimeout(() => {
-        window.location.href = '/app';
+        window.location.href = '/';
       }, 300);
     } catch {
       setError('로그인 실패. 이메일과 비밀번호를 확인하세요.');
