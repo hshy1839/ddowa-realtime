@@ -33,8 +33,8 @@ export default function Home() {
   return (
     <main className="relative min-h-screen overflow-x-hidden bg-black text-white">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(34,197,94,0.25),rgba(0,0,0,0)_35%)]" />
-      <div className="stars" />
-      <div className="stars stars-2" />
+      <div className="stars fixed inset-0 z-0 pointer-events-none" />
+      <div className="stars stars-2 fixed inset-0 z-0 pointer-events-none" />
 
       <header className="sticky top-0 z-30 border-b border-white/10 bg-black/70 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5">
@@ -188,14 +188,14 @@ export default function Home() {
             radial-gradient(1.7px 1.7px at 420px 220px, rgba(255, 255, 255, 0.7), transparent);
           background-size: 520px 520px;
           animation: drift 120s linear infinite;
-          opacity: 0.35;
+          opacity: 0.48;
           pointer-events: none;
         }
         .stars-2,
         .stars-2:after {
           background-size: 700px 700px;
           animation-duration: 180s;
-          opacity: 0.2;
+          opacity: 0.3;
         }
         @keyframes drift {
           from {
