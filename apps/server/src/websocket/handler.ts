@@ -17,6 +17,8 @@ export interface WSSession {
   agentBuffer: string;
   fullUserTranscript: string;
   lastCustomerPhone: string;
+  pendingBookingAt: Date | null;
+  pendingBookingRequested: boolean;
 }
 
 const sessions = new Map<string, WSSession>();
@@ -133,6 +135,8 @@ export async function handleWSConnection(ws: WebSocket, token: IParsedToken | nu
     agentBuffer: '',
     fullUserTranscript: '',
     lastCustomerPhone: '',
+    pendingBookingAt: null,
+    pendingBookingRequested: false,
   };
 
   sessions.set(sessionId, session);
@@ -141,7 +145,6 @@ export async function handleWSConnection(ws: WebSocket, token: IParsedToken | nu
   ws.on('message', async (data) => {
     try {
       const message = JSON.parse(data.toString());
-      console.log(`[WS] ${sessionId} received:`, message.type);
       await handleWSMessage(sessionId, message);
     } catch (error) {
       console.error('[WS] Error handling message:', error);
@@ -184,6 +187,8 @@ async function handleWSMessage(sessionId: string, message: any) {
         session.agentBuffer = '';
         session.fullUserTranscript = '';
         session.lastCustomerPhone = '';
+        session.pendingBookingAt = null;
+        session.pendingBookingRequested = false;
 
         // 저지연 모드: 헬스체크는 백그라운드로 수행(통화 시작 블로킹 금지)
         geminiHealthcheck(session.ws).catch(() => undefined);
@@ -351,6 +356,8 @@ async function handleWSMessage(sessionId: string, message: any) {
         session.agentBuffer = '';
         session.fullUserTranscript = '';
         session.lastCustomerPhone = '';
+        session.pendingBookingAt = null;
+        session.pendingBookingRequested = false;
         session.conversationId = '';
         break;
       }
@@ -434,7 +441,6 @@ function setupProviderListeners(session: WSSession) {
   });
 
   session.provider.on('tts.audio', (event: any) => {
-    console.log(`🔊 [TTS.AUDIO] received ${event.pcm16ChunkBase64?.length || 0} bytes`);
     session.ws.send(
       JSON.stringify({
         type: 'tts.audio',
@@ -497,22 +503,37 @@ function normalizePhone(input: string): string {
 
 function extractPhone(text: string): string | null {
   const raw = text || '';
-  const m = raw.match(/(?:\+?82[\s-]?)?0?1[0-9][\s-]?[0-9]{3,4}[\s-]?[0-9]{4}/);
-  if (!m) return null;
-  let digits = normalizePhone(m[0]);
-  if (digits.startsWith('82')) digits = `0${digits.slice(2)}`;
-  if (digits.length > 11) digits = digits.slice(-11);
-  return digits;
+
+  // 1) 공백/하이픈 포함 일반 패턴
+  const m = raw.match(/(?:\+?82[\s-]?)?0?1[0-9](?:[\s-]?\d){7,9}/);
+  if (m) {
+    let digits = normalizePhone(m[0]);
+    if (digits.startsWith('82')) digits = `0${digits.slice(2)}`;
+    const matched = digits.match(/01\d{8,9}/);
+    if (matched) return matched[0].slice(0, 11);
+  }
+
+  // 2) STT가 "0 1 0 8 ..."처럼 쪼개는 경우 대응
+  const compactDigits = raw.replace(/\D/g, '');
+  if (!compactDigits) return null;
+  const normalizedCompact = compactDigits.startsWith('82') ? `0${compactDigits.slice(2)}` : compactDigits;
+  const found = normalizedCompact.match(/01\d{8,9}/);
+  return found ? found[0].slice(0, 11) : null;
 }
 
 function extractDateTimes(text: string): Date[] {
   const out: Date[] = [];
   const now = new Date();
+  const normalizedText = (text || '').replace(/\s+/g, '');
+
+  const sources = [text || '', normalizedText];
+
+  for (const src of sources) {
 
   // 1) YYYY-MM-DD HH:mm
   const fullRegex = /(20\d{2})[.\/-](\d{1,2})[.\/-](\d{1,2})\s*(\d{1,2})[:시](\d{1,2})?/g;
   let m: RegExpExecArray | null;
-  while ((m = fullRegex.exec(text)) !== null) {
+  while ((m = fullRegex.exec(src)) !== null) {
     const [_, y, mo, d, h, mi] = m;
     const dt = new Date(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi || 0));
     if (!Number.isNaN(dt.getTime())) out.push(dt);
@@ -520,7 +541,7 @@ function extractDateTimes(text: string): Date[] {
 
   // 2) M월 D일 H시(분 optional)
   const mdRegex = /(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*(오전|오후)?\s*(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분?)?/g;
-  while ((m = mdRegex.exec(text)) !== null) {
+  while ((m = mdRegex.exec(src)) !== null) {
     const [_, mo, d, ampm, hRaw, miRaw] = m;
     let h = Number(hRaw);
     if (ampm === '오후' && h < 12) h += 12;
@@ -532,7 +553,7 @@ function extractDateTimes(text: string): Date[] {
 
   // 3) 상대 날짜(오늘/내일/모레) + 시간
   const relRegex = /(오늘|내일|모레)\s*(오전|오후)?\s*(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분?)?/g;
-  while ((m = relRegex.exec(text)) !== null) {
+  while ((m = relRegex.exec(src)) !== null) {
     const [_, dayWord, ampm, hRaw, miRaw] = m;
     let h = Number(hRaw);
     if (ampm === '오후' && h < 12) h += 12;
@@ -545,7 +566,7 @@ function extractDateTimes(text: string): Date[] {
 
   // 4) M/D H:mm
   const slashRegex = /(\d{1,2})[\/-](\d{1,2})\s*(오전|오후)?\s*(\d{1,2})[:시](\d{1,2})?/g;
-  while ((m = slashRegex.exec(text)) !== null) {
+  while ((m = slashRegex.exec(src)) !== null) {
     const [_, mo, d, ampm, hRaw, miRaw] = m;
     let h = Number(hRaw);
     if (ampm === '오후' && h < 12) h += 12;
@@ -553,6 +574,8 @@ function extractDateTimes(text: string): Date[] {
     const dt = new Date(now.getFullYear(), Number(mo) - 1, Number(d), h, Number(miRaw || 0));
     if (dt.getTime() < now.getTime()) dt.setFullYear(now.getFullYear() + 1);
     if (!Number.isNaN(dt.getTime())) out.push(dt);
+  }
+
   }
 
   return out.sort((a, b) => a.getTime() - b.getTime());
@@ -566,39 +589,57 @@ async function findOrCreateContactByPhone(workspaceId: string, phoneDigits: stri
   return contact;
 }
 
-async function handleBookingCrudByPhone(session: WSSession, userTextRaw: string): Promise<string | null> {
+export async function handleBookingCrudByPhone(session: WSSession, userTextRaw: string): Promise<string | null> {
   const userText = (userTextRaw || '').trim();
   if (!userText) return null;
 
   const dts = extractDateTimes(userText);
   const hasBookingWord = /(예약|일정|스케줄|조회|확인|내역|추가|생성|등록|수정|변경|취소|삭제|잡아|잡아줘)/.test(userText);
   const hasActionWord = /(해줘|부탁|잡아줘|등록해|추가해)/.test(userText);
-  if (!hasBookingWord && !(hasActionWord && dts.length)) return null;
+
+  if (dts.length) session.pendingBookingAt = dts[0];
+  if (hasBookingWord || (hasActionWord && dts.length > 0)) session.pendingBookingRequested = true;
+
+  console.log(`[WEB][booking] input="${userText.slice(0, 120)}" hasBookingWord=${hasBookingWord} hasActionWord=${hasActionWord} dts=${dts.length} pendingAt=${session.pendingBookingAt ? session.pendingBookingAt.toISOString() : 'none'} pendingReq=${session.pendingBookingRequested}`);
+
+  const likelyCreateByContext = session.pendingBookingRequested && !!session.pendingBookingAt;
+  if (!hasBookingWord && !(hasActionWord && dts.length) && !likelyCreateByContext) return null;
 
   const detectedPhone = extractPhone(userText);
   const phone = detectedPhone || session.lastCustomerPhone;
   if (detectedPhone) session.lastCustomerPhone = detectedPhone;
+  console.log(`[WEB][booking] parsed phone=${phone || 'none'} lastPhone=${session.lastCustomerPhone || 'none'}`);
   if (!phone) {
     return '예약 처리를 위해 고객 전화번호(예: 010-1234-5678)를 함께 말씀해 주세요.';
   }
 
   const isUpdate = /(수정|변경)/.test(userText);
   const isDelete = /(취소|삭제)/.test(userText);
-  const isCreate = (/(추가|생성|등록|잡아|해줘|부탁)/.test(userText) || dts.length > 0) && !isUpdate && !isDelete;
+  const isCreate = ((/(추가|생성|등록|잡아|해줘|부탁)/.test(userText) || dts.length > 0) || likelyCreateByContext) && !isUpdate && !isDelete;
   const isRead = /(조회|확인|내역|보여)/.test(userText) && !isCreate;
 
   const contact = await findOrCreateContactByPhone(session.workspaceId, phone);
 
   if (isRead) {
-    const list = await Booking.find({ workspaceId: session.workspaceId, contactId: contact._id }).sort({ startAt: 1 }).limit(5).lean();
+    let list = await Booking.find({ workspaceId: session.workspaceId, contactId: contact._id }).sort({ startAt: 1 }).limit(5).lean();
+
+    // STT 번호 흔들림 대비: 동일 끝자리(8자리) 연락처들의 예약도 보조 조회
+    if (!list.length && phone.length >= 8) {
+      const similars = await Contact.find({ workspaceId: session.workspaceId, phone: new RegExp(`${phone.slice(-8)}$`) }).select('_id').lean();
+      const ids = similars.map((c: any) => c._id);
+      if (ids.length) {
+        list = await Booking.find({ workspaceId: session.workspaceId, contactId: { $in: ids } }).sort({ startAt: 1 }).limit(5).lean();
+      }
+    }
+
     if (!list.length) return `전화번호 ${phone} 기준 예약 내역이 없습니다.`;
     const lines = list.map((b: any, i: number) => `${i + 1}) ${new Date(b.startAt).toLocaleString('ko-KR')} (${b.status})`);
     return `전화번호 ${phone} 예약 내역입니다.\n` + lines.join('\n');
   }
 
   if (isCreate) {
-    if (!dts.length) return '예약 추가할 날짜/시간을 말씀해 주세요. 예: 내일 오후 3시 / 2월 18일 14시';
-    const startAt = dts[0];
+    const startAt = dts[0] || session.pendingBookingAt;
+    if (!startAt) return '예약 추가할 날짜/시간을 말씀해 주세요. 예: 내일 오후 3시 / 2월 18일 14시';
     const endAt = startAt;
     const exists = await Booking.findOne({
       workspaceId: session.workspaceId,
@@ -620,6 +661,8 @@ async function handleBookingCrudByPhone(session: WSSession, userTextRaw: string)
       memo: `phone:${phone}`,
     });
     console.log(`[WEB][booking] created id=${booking._id} workspace=${session.workspaceId} contact=${contact._id} at=${startAt.toISOString()}`);
+    session.pendingBookingAt = null;
+    session.pendingBookingRequested = false;
     return `예약을 등록했습니다. (${new Date(booking.startAt).toLocaleString('ko-KR')})`;
   }
 
@@ -631,6 +674,8 @@ async function handleBookingCrudByPhone(session: WSSession, userTextRaw: string)
     target.startAt = newStart;
     target.endAt = newStart;
     await target.save();
+    session.pendingBookingAt = null;
+    session.pendingBookingRequested = false;
     return `예약 시간을 변경했습니다. (${newStart.toLocaleString('ko-KR')})`;
   }
 
@@ -639,6 +684,8 @@ async function handleBookingCrudByPhone(session: WSSession, userTextRaw: string)
     if (!target) return `취소할 예약이 없습니다. 전화번호 ${phone} 기준 예약 내역이 비어 있습니다.`;
     target.status = 'cancelled';
     await target.save();
+    session.pendingBookingAt = null;
+    session.pendingBookingRequested = false;
     return `예약을 취소했습니다. (${new Date(target.startAt).toLocaleString('ko-KR')})`;
   }
 
