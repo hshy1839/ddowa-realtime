@@ -35,7 +35,7 @@ async function main() {
   const app = express();
   const server = http.createServer(app);
   const wss = new WebSocketServer({ server });
-  const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || 'http://localhost:3000,https://ddowa-realtime.onrender.com')
+  const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || 'http://localhost:3000,https://ddowa-realtime.onrender.com,https://ddowa-ai.vercel.app,https://ddowa-realtime-frontend.vercel.app')
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
