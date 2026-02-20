@@ -331,19 +331,22 @@ async function handleWSMessage(sessionId: string, message: any) {
 
         if (session.conversationId) {
           try {
-            if (session.sttBuffer.trim()) {
+            const userText = normalizeTranscriptForRecord(session.sttBuffer);
+            const agentText = normalizeTranscriptForRecord(session.agentBuffer);
+
+            if (userText) {
               await Message.create({
                 conversationId: session.conversationId,
                 role: 'user',
-                text: session.sttBuffer.trim(),
+                text: userText,
                 createdAt: new Date(),
               });
             }
-            if (session.agentBuffer.trim()) {
+            if (agentText) {
               await Message.create({
                 conversationId: session.conversationId,
                 role: 'agent',
-                text: session.agentBuffer.trim(),
+                text: agentText,
                 createdAt: new Date(),
               });
             }
@@ -414,19 +417,22 @@ function setupProviderListeners(session: WSSession) {
 
     if (session.conversationId) {
       try {
-        if (session.sttBuffer.trim()) {
+        const userText = normalizeTranscriptForRecord(session.sttBuffer);
+        const agentText = normalizeTranscriptForRecord(session.agentBuffer);
+
+        if (userText) {
           await Message.create({
             conversationId: session.conversationId,
             role: 'user',
-            text: session.sttBuffer.trim(),
+            text: userText,
             createdAt: new Date(),
           });
         }
-        if (session.agentBuffer.trim()) {
+        if (agentText) {
           await Message.create({
             conversationId: session.conversationId,
             role: 'agent',
-            text: session.agentBuffer.trim(),
+            text: agentText,
             createdAt: new Date(),
           });
         }
@@ -496,6 +502,28 @@ function mergeCaption(prev: string, incomingRaw: string): string {
   return `${prev}${joiner}${incoming}`;
 }
 
+function normalizeTranscriptForRecord(input: string): string {
+  let t = (input || '').trim();
+  if (!t) return '';
+
+  // 숫자 사이 공백 제거 (전화번호/시간 인식 보정)
+  t = t.replace(/(?<=\d)\s+(?=\d)/g, '');
+
+  // 자주 깨지는 한국어 표현 보정
+  t = t
+    .replace(/내\s*일/g, '내일')
+    .replace(/모\s*레/g, '모레')
+    .replace(/오\s*후/g, '오후')
+    .replace(/오\s*전/g, '오전')
+    .replace(/감\s*사\s*합\s*니\s*다/g, '감사합니다');
+
+  // 시간 표현 보정: "3 시에" -> "3시에"
+  t = t.replace(/(\d+)\s*시\s*에/g, '$1시에').replace(/(\d+)\s*시/g, '$1시');
+
+  // 공백 정리
+  t = t.replace(/\s{2,}/g, ' ').trim();
+  return t;
+}
 
 function normalizePhone(input: string): string {
   return (input || '').replace(/\D/g, '');

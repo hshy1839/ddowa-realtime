@@ -38,7 +38,22 @@ export default function AnalyticsPage() {
   const maxDayCount = useMemo(() => Math.max(...(data?.dayCounts?.map((d) => d.count) || [1])), [data]);
   const fmtSec = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
 
-  if (loading) return <div className="text-black/60">분석 데이터 로딩 중...</div>;
+  if (loading) {
+    return (
+      <div className="space-y-4 animate-pulse">
+        <div className="h-8 w-40 rounded-lg bg-white/10" />
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-28 rounded-2xl bg-white/10" />
+          ))}
+        </div>
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <div className="h-72 rounded-2xl bg-white/10" />
+          <div className="h-72 rounded-2xl bg-white/10" />
+        </div>
+      </div>
+    );
+  }
   if (error) return <div className="text-red-500">{error}</div>;
 
   return (

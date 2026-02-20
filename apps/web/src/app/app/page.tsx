@@ -42,7 +42,6 @@ export default function DashboardPage() {
       { label: '총 상담', value: (data?.stats.totalConsultations ?? 0).toLocaleString() },
       { label: '총 연락처', value: (data?.stats.totalContacts ?? 0).toLocaleString() },
       { label: '완료된 예약', value: (data?.stats.completedBookings ?? 0).toLocaleString() },
-      { label: '평균 만족도', value: data?.stats.avgRating != null ? `${data.stats.avgRating}/5` : '-' },
     ],
     [data]
   );
@@ -50,7 +49,22 @@ export default function DashboardPage() {
   const trend = data?.trend || [];
   const max = Math.max(...trend.map((x) => x.count), 1);
 
-  if (loading) return <div className="text-white/80">대시보드 로딩 중...</div>;
+  if (loading) {
+    return (
+      <div className="space-y-4 animate-pulse">
+        <div className="h-8 w-48 rounded-lg bg-white/10" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-28 rounded-2xl bg-white/10" />
+          ))}
+        </div>
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+          <div className="xl:col-span-2 h-72 rounded-2xl bg-white/10" />
+          <div className="h-72 rounded-2xl bg-white/10" />
+        </div>
+      </div>
+    );
+  }
   if (error) return <div className="text-red-400">{error}</div>;
 
   return (
@@ -69,7 +83,7 @@ export default function DashboardPage() {
         </button>
       </header>
 
-      <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-7">
+      <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-7">
         {stats.map((item) => (
           <article key={item.label} className="rounded-2xl border border-white/15 bg-[#171d27] p-5">
             <p className="text-sm text-white/65 mb-2">{item.label}</p>

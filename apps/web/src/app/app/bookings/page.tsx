@@ -15,8 +15,23 @@ type Booking = {
 
 const statusList: Booking['status'][] = ['pending', 'confirmed', 'completed', 'cancelled'];
 
+const statusLabel: Record<Booking['status'], string> = {
+  pending: '대기',
+  confirmed: '확정',
+  completed: '완료',
+  cancelled: '취소',
+};
+
+const statusStyle: Record<Booking['status'], string> = {
+  pending: 'bg-yellow-500/15 text-yellow-300 border-yellow-400/40',
+  confirmed: 'bg-emerald-500/15 text-emerald-300 border-emerald-400/40',
+  completed: 'bg-sky-500/15 text-sky-300 border-sky-400/40',
+  cancelled: 'bg-rose-500/15 text-rose-300 border-rose-400/40',
+};
+
 export default function BookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [monthCursor, setMonthCursor] = useState(new Date());
   const [editing, setEditing] = useState<Booking | null>(null);
@@ -33,15 +48,19 @@ export default function BookingsPage() {
   }, []);
 
   const fetchBookings = async () => {
-    const res = await fetch('/api/bookings', { cache: 'no-store' });
-    const data = await res.json();
-    const list = (data.bookings || []) as Booking[];
-    setBookings(list);
-    // 예약이 있으면 가장 최근 예약 날짜로 자동 이동(조회 누락 체감 방지)
-    if (list.length > 0) {
-      const latest = new Date(list[0].startAt);
-      setSelectedDate(latest);
-      setMonthCursor(new Date(latest.getFullYear(), latest.getMonth(), 1));
+    try {
+      setLoading(true);
+      const res = await fetch('/api/bookings', { cache: 'no-store' });
+      const data = await res.json();
+      const list = (data.bookings || []) as Booking[];
+      setBookings(list);
+      if (list.length > 0) {
+        const latest = new Date(list[0].startAt);
+        setSelectedDate(latest);
+        setMonthCursor(new Date(latest.getFullYear(), latest.getMonth(), 1));
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -124,22 +143,55 @@ export default function BookingsPage() {
     await fetchBookings();
   };
 
+  if (loading) {
+    return (
+      <div className="grid grid-cols-1 xl:grid-cols-[430px_1fr] gap-4 lg:gap-5 animate-pulse">
+        <section className="rounded-3xl border border-white/15 bg-[#131923] p-4 sm:p-5">
+          <div className="h-8 w-52 rounded bg-white/10 mb-4" />
+          <div className="grid grid-cols-7 gap-1.5">
+            {Array.from({ length: 35 }).map((_, i) => (
+              <div key={i} className="h-12 rounded-lg bg-white/10" />
+            ))}
+          </div>
+        </section>
+        <section className="rounded-3xl border border-white/15 bg-[#131923] p-4 sm:p-5 space-y-3">
+          <div className="h-7 w-40 rounded bg-white/10" />
+          <div className="h-24 rounded-xl bg-white/10" />
+          <div className="h-24 rounded-xl bg-white/10" />
+          <div className="h-44 rounded-2xl bg-white/10" />
+        </section>
+      </div>
+    );
+  }
+
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-[420px_1fr] gap-4">
-      <section className="bg-white rounded-2xl border border-black/10 p-4">
-        <div className="flex items-center justify-between mb-3">
-          <button onClick={() => setMonthCursor(new Date(monthCursor.getFullYear(), monthCursor.getMonth() - 1, 1))}>◀</button>
-          <h1 className="text-lg font-semibold">예약내역 · {monthCursor.getFullYear()}년 {monthCursor.getMonth() + 1}월</h1>
-          <button onClick={() => setMonthCursor(new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 1))}>▶</button>
+    <div className="grid grid-cols-1 xl:grid-cols-[430px_1fr] gap-4 lg:gap-5">
+      <section className="rounded-3xl border border-white/15 bg-[#131923] p-4 sm:p-5 shadow-[0_20px_40px_rgba(0,0,0,0.35)]">
+        <div className="flex items-center justify-between mb-4">
+          <button
+            onClick={() => setMonthCursor(new Date(monthCursor.getFullYear(), monthCursor.getMonth() - 1, 1))}
+            className="h-8 w-8 rounded-lg border border-white/20 text-white/80 hover:bg-white/10"
+          >
+            ◀
+          </button>
+          <h1 className="text-base sm:text-lg font-semibold text-white">
+            예약 캘린더 · {monthCursor.getFullYear()}년 {monthCursor.getMonth() + 1}월
+          </h1>
+          <button
+            onClick={() => setMonthCursor(new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 1))}
+            className="h-8 w-8 rounded-lg border border-white/20 text-white/80 hover:bg-white/10"
+          >
+            ▶
+          </button>
         </div>
 
-        <div className="grid grid-cols-7 text-xs text-black/50 mb-1">
+        <div className="grid grid-cols-7 text-xs text-white/55 mb-2">
           {['일', '월', '화', '수', '목', '금', '토'].map((d) => (
             <div key={d} className="text-center py-1">{d}</div>
           ))}
         </div>
 
-        <div className="grid grid-cols-7 gap-1">
+        <div className="grid grid-cols-7 gap-1.5">
           {daysInGrid.map((d) => {
             const isCurrentMonth = d.getMonth() === monthCursor.getMonth();
             const isSelected = dayKey(d) === dayKey(selectedDate);
@@ -151,42 +203,55 @@ export default function BookingsPage() {
                   setSelectedDate(d);
                   setMonthCursor(new Date(d.getFullYear(), d.getMonth(), 1));
                 }}
-                className={`h-12 rounded-lg border text-sm relative ${
-                  isSelected ? 'bg-black text-white border-black' : 'bg-white border-black/10 hover:border-black/40'
-                } ${!isCurrentMonth ? 'opacity-40' : ''}`}
+                className={`h-12 rounded-lg border text-sm relative transition ${
+                  isSelected
+                    ? 'bg-[#2bbf4b] text-white border-[#2bbf4b] font-semibold'
+                    : 'bg-[#1a212d] border-white/10 text-white/90 hover:border-white/35'
+                } ${!isCurrentMonth ? 'opacity-35' : ''}`}
               >
                 {d.getDate()}
-                {has && <span className={`absolute bottom-1 left-1/2 -translate-x-1/2 h-1.5 w-1.5 rounded-full ${isSelected ? 'bg-white' : 'bg-black'}`} />}
+                {has && (
+                  <span className={`absolute bottom-1 left-1/2 -translate-x-1/2 h-1.5 w-1.5 rounded-full ${isSelected ? 'bg-white' : 'bg-[#2bbf4b]'}`} />
+                )}
               </button>
             );
           })}
         </div>
 
-        <button onClick={() => openCreate(selectedDate)} className="mt-4 w-full h-10 rounded-xl bg-black text-white">예약 추가</button>
+        <button
+          onClick={() => openCreate(selectedDate)}
+          className="mt-4 w-full h-11 rounded-xl bg-[#2bbf4b] text-white font-semibold hover:bg-[#35cf57] transition"
+        >
+          예약 추가
+        </button>
       </section>
 
-      <section className="bg-white rounded-2xl border border-black/10 p-4">
-        <h2 className="text-lg font-semibold mb-3">{selectedDate.toLocaleDateString()} 예약 목록</h2>
+      <section className="rounded-3xl border border-white/15 bg-[#131923] p-4 sm:p-5 shadow-[0_20px_40px_rgba(0,0,0,0.35)]">
+        <h2 className="text-lg font-semibold text-white mb-4">
+          {selectedDate.toLocaleDateString()} 예약 목록
+        </h2>
 
-        <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1 mb-4">
+        <div className="space-y-2.5 max-h-[310px] overflow-y-auto pr-1 mb-5">
           {selectedDayBookings.length === 0 ? (
-            <p className="text-black/50 text-sm">예약이 없습니다.</p>
+            <p className="text-white/55 text-sm rounded-xl border border-white/10 bg-[#1a212d] p-4">예약이 없습니다.</p>
           ) : (
             selectedDayBookings.map((b) => (
-              <div key={b._id} className="border border-black/10 rounded-xl p-3">
-                <div className="flex justify-between items-start gap-2">
-                  <div>
-                    <p className="font-medium">{b.serviceName || '서비스'}</p>
-                    <p className="text-xs text-black/60">
+              <div key={b._id} className="border border-white/10 bg-[#1a212d] rounded-xl p-3.5">
+                <div className="flex justify-between items-start gap-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-white truncate">{b.serviceName || '서비스'}</p>
+                    <p className="text-xs text-white/70 mt-0.5">
                       {new Date(b.startAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>
-                    {b.phone && <p className="text-xs mt-1 text-black/70">전화번호: {b.phone}</p>}
-                    {b.memo && <p className="text-sm mt-1 text-black/75">{b.memo}</p>}
-                    <p className="text-xs mt-1">상태: {b.status}</p>
+                    {b.phone && <p className="text-xs mt-1 text-white/75">전화번호: {b.phone}</p>}
+                    {b.memo && <p className="text-sm mt-1.5 text-white/85 break-words">{b.memo}</p>}
+                    <span className={`mt-2 inline-flex px-2 py-0.5 rounded-md border text-[11px] ${statusStyle[b.status]}`}>
+                      {statusLabel[b.status]}
+                    </span>
                   </div>
-                  <div className="flex gap-1">
-                    <button onClick={() => openEdit(b)} className="px-2 py-1 text-xs rounded border border-black/20">수정</button>
-                    <button onClick={() => remove(b._id)} className="px-2 py-1 text-xs rounded border border-red-200 text-red-600">삭제</button>
+                  <div className="flex gap-1.5 shrink-0">
+                    <button onClick={() => openEdit(b)} className="px-2.5 py-1.5 text-xs rounded-lg border border-white/25 text-white/90 hover:bg-white/10">수정</button>
+                    <button onClick={() => remove(b._id)} className="px-2.5 py-1.5 text-xs rounded-lg border border-rose-400/60 text-rose-300 hover:bg-rose-500/10">삭제</button>
                   </div>
                 </div>
               </div>
@@ -194,22 +259,53 @@ export default function BookingsPage() {
           )}
         </div>
 
-        <div className="border border-black/10 rounded-xl p-3">
-          <h3 className="font-medium mb-2">{editing ? '예약 수정' : '예약 추가'}</h3>
+        <div className="border border-white/12 bg-[#1a212d] rounded-2xl p-4">
+          <h3 className="font-semibold text-white mb-3">{editing ? '예약 수정' : '예약 추가'}</h3>
           <div className="grid sm:grid-cols-1 gap-2 mb-2">
-            <input type="datetime-local" value={form.startAt} onChange={(e) => setForm((p) => ({ ...p, startAt: e.target.value }))} className="px-3 py-2 rounded-lg border border-black/20" />
+            <input
+              type="datetime-local"
+              value={form.startAt}
+              onChange={(e) => setForm((p) => ({ ...p, startAt: e.target.value }))}
+              className="px-3 py-2.5 rounded-lg border border-white/20 bg-[#0f141d] text-white"
+            />
           </div>
-          <input placeholder="서비스명" value={form.serviceName} onChange={(e) => setForm((p) => ({ ...p, serviceName: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-black/20 mb-2" />
-          <input placeholder="고객 전화번호 (예: 01012345678)" value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-black/20 mb-2" />
-          <textarea placeholder="메모" value={form.memo} onChange={(e) => setForm((p) => ({ ...p, memo: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-black/20 mb-2" rows={3} />
-          <select value={form.status} onChange={(e) => setForm((p) => ({ ...p, status: e.target.value as Booking['status'] }))} className="w-full px-3 py-2 rounded-lg border border-black/20 mb-3">
+          <input
+            placeholder="서비스명"
+            value={form.serviceName}
+            onChange={(e) => setForm((p) => ({ ...p, serviceName: e.target.value }))}
+            className="w-full px-3 py-2.5 rounded-lg border border-white/20 bg-[#0f141d] text-white mb-2"
+          />
+          <input
+            placeholder="고객 전화번호 (예: 01012345678)"
+            value={form.phone}
+            onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))}
+            className="w-full px-3 py-2.5 rounded-lg border border-white/20 bg-[#0f141d] text-white mb-2"
+          />
+          <textarea
+            placeholder="메모"
+            value={form.memo}
+            onChange={(e) => setForm((p) => ({ ...p, memo: e.target.value }))}
+            className="w-full px-3 py-2.5 rounded-lg border border-white/20 bg-[#0f141d] text-white mb-2"
+            rows={3}
+          />
+          <select
+            value={form.status}
+            onChange={(e) => setForm((p) => ({ ...p, status: e.target.value as Booking['status'] }))}
+            className="w-full px-3 py-2.5 rounded-lg border border-white/20 bg-[#0f141d] text-white mb-3"
+          >
             {statusList.map((s) => (
-              <option key={s} value={s}>{s}</option>
+              <option key={s} value={s}>{statusLabel[s]}</option>
             ))}
           </select>
           <div className="flex gap-2">
-            <button onClick={submit} className="px-4 py-2 rounded-lg bg-black text-white">{editing ? '수정 저장' : '추가 저장'}</button>
-            {editing && <button onClick={() => { setEditing(null); openCreate(selectedDate); }} className="px-4 py-2 rounded-lg border border-black/20">취소</button>}
+            <button onClick={submit} className="px-4 py-2 rounded-lg bg-[#2bbf4b] text-white font-semibold hover:bg-[#35cf57]">
+              {editing ? '수정 저장' : '추가 저장'}
+            </button>
+            {editing && (
+              <button onClick={() => { setEditing(null); openCreate(selectedDate); }} className="px-4 py-2 rounded-lg border border-white/25 text-white/90 hover:bg-white/10">
+                취소
+              </button>
+            )}
           </div>
         </div>
       </section>

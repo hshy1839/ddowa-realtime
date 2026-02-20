@@ -46,6 +46,7 @@ export default function SettingsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [isMicTestOn, setIsMicTestOn] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const micTestStreamRef = useRef<MediaStream | null>(null);
   const micTestAudioContextRef = useRef<AudioContext | null>(null);
@@ -58,6 +59,7 @@ export default function SettingsPage() {
 
   const fetchConfig = async () => {
     try {
+      setLoading(true);
       const res = await fetch('/api/agent-config', { cache: 'no-store' });
       if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
       const data = await res.json();
@@ -65,6 +67,8 @@ export default function SettingsPage() {
     } catch (error) {
       console.error('Failed to fetch config:', error);
       setSaveMsg('설정 불러오기 실패');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -164,6 +168,17 @@ export default function SettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  if (loading) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-5 animate-pulse">
+        <div className="h-8 w-24 rounded bg-white/10" />
+        <div className="h-64 rounded-2xl bg-white/10" />
+        <div className="h-72 rounded-2xl bg-white/10" />
+        <div className="h-11 rounded-xl bg-white/10" />
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-4xl mx-auto space-y-5">
       <div className="flex items-center justify-between">
@@ -173,48 +188,57 @@ export default function SettingsPage() {
 
       <section className="bg-white rounded-2xl border border-black/10 p-5 sm:p-6">
         <h2 className="text-xl font-bold mb-4">회사 정보</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="회사명">
-            <input
-              value={config.companyName}
-              onChange={(e) => setConfig((p) => ({ ...p, companyName: e.target.value }))}
-              className="w-full px-3 py-2 rounded-xl border border-black/20 bg-white"
-              placeholder="형식: 브랜드/상호명 그대로 | 예시: 또화 상담센터"
-            />
-          </Field>
-          <Field label="대표 전화">
-            <input
-              value={config.companyPhone}
-              onChange={(e) => setConfig((p) => ({ ...p, companyPhone: e.target.value }))}
-              className="w-full px-3 py-2 rounded-xl border border-black/20 bg-white"
-              placeholder="형식: 실제 연결번호 1개 | 예시: 010-1234-5678 / 02-123-4567"
-            />
-          </Field>
-          <Field label="Twilio 연결 번호">
-            <input
-              value={config.twilioPhoneNumber}
-              onChange={(e) => setConfig((p) => ({ ...p, twilioPhoneNumber: e.target.value }))}
-              className="w-full px-3 py-2 rounded-xl border border-black/20 bg-white"
-              placeholder="형식: Twilio 구매 번호(E.164 권장) | 예시: +14155552671"
-            />
-          </Field>
-          <Field label="회사 설명" wide>
-            <textarea
-              rows={3}
-              value={config.companyDescription}
-              onChange={(e) => setConfig((p) => ({ ...p, companyDescription: e.target.value }))}
-              className="w-full px-3 py-2 rounded-xl border border-black/20 bg-white"
-              placeholder="형식: 누구에게+무엇을+어떻게 (1~2문장) | 예시: 전화 기반 예약 상담을 제공하며 예약 조회/추가/변경/취소를 실시간 처리합니다."
-            />
-          </Field>
-          <Field label="웹사이트" wide>
-            <input
-              value={config.companyWebsite}
-              onChange={(e) => setConfig((p) => ({ ...p, companyWebsite: e.target.value }))}
-              className="w-full px-3 py-2 rounded-xl border border-black/20 bg-white"
-              placeholder="형식: https:// 포함 전체 URL | 예시: https://ddowa.ai"
-            />
-          </Field>
+
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+          <div className="xl:col-span-2">
+            <Field label="회사 설명 (크게 작성)">
+              <textarea
+                rows={10}
+                value={config.companyDescription}
+                onChange={(e) => setConfig((p) => ({ ...p, companyDescription: e.target.value }))}
+                className="w-full px-4 py-3 rounded-xl border border-black/20 bg-white leading-7"
+                placeholder="형식: 고객/서비스/가격/예약정책/주의사항/위치/운영시간을 충분히 작성하세요.\n예시) 저희는 1:1 프라이빗 스타일링 전문 미용실이며 예약 상담, 시술 안내, 결제 안내를 제공합니다..."
+              />
+            </Field>
+          </div>
+
+          <div className="space-y-4">
+            <Field label="회사명">
+              <input
+                value={config.companyName}
+                onChange={(e) => setConfig((p) => ({ ...p, companyName: e.target.value }))}
+                className="w-full px-3 py-2 rounded-xl border border-black/20 bg-white"
+                placeholder="형식: 브랜드/상호명 그대로 | 예시: 또화 상담센터"
+              />
+            </Field>
+
+            <Field label="대표 전화">
+              <input
+                value={config.companyPhone}
+                onChange={(e) => setConfig((p) => ({ ...p, companyPhone: e.target.value }))}
+                className="w-full px-3 py-2 rounded-xl border border-black/20 bg-white"
+                placeholder="형식: 실제 연결번호 1개 | 예시: 010-1234-5678 / 02-123-4567"
+              />
+            </Field>
+
+            <Field label="연결 번호">
+              <input
+                value={config.twilioPhoneNumber}
+                onChange={(e) => setConfig((p) => ({ ...p, twilioPhoneNumber: e.target.value }))}
+                className="w-full px-3 py-2 rounded-xl border border-black/20 bg-white"
+                placeholder="형식: Twilio 구매 번호(E.164 권장) | 예시: +14155552671"
+              />
+            </Field>
+
+            <Field label="웹사이트">
+              <input
+                value={config.companyWebsite}
+                onChange={(e) => setConfig((p) => ({ ...p, companyWebsite: e.target.value }))}
+                className="w-full px-3 py-2 rounded-xl border border-black/20 bg-white"
+                placeholder="형식: https:// 포함 전체 URL | 예시: https://ddowa.ai"
+              />
+            </Field>
+          </div>
         </div>
       </section>
 
