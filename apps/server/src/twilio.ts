@@ -101,6 +101,7 @@ export async function handleTwilioMediaWS(ws: WebSocket, reqUrl: string) {
   const u = new URL(reqUrl, 'http://localhost');
   const workspaceId = u.searchParams.get('workspaceId') || '';
   const from = u.searchParams.get('from') || '';
+  console.log(`[Twilio][media] ws connected workspaceId=${workspaceId} from=${from}`);
 
   if (!workspaceId) {
     ws.close(1008, 'workspaceId required');
@@ -236,22 +237,28 @@ export async function handleTwilioMediaWS(ws: WebSocket, reqUrl: string) {
       if (msg.event === 'start') {
         streamSid = msg.start?.streamSid || msg.streamSid || '';
         startedAt = Date.now();
+        console.log(`[Twilio][media] start streamSid=${streamSid}`);
       } else if (msg.event === 'media') {
         const payload = msg.media?.payload || '';
         if (!payload) return;
         const pcm16 = mulawBase64ToPcm16(payload);
         await provider.sendAudioChunk(pcm16ToBase64(pcm16), 8000, Date.now());
       } else if (msg.event === 'stop') {
+        console.log(`[Twilio][media] stop streamSid=${msg.streamSid || streamSid}`);
         await finalize();
       }
-    } catch {}
+    } catch (e: any) {
+      console.error('[Twilio][media] message parse/handle error:', e?.message || e);
+    }
   });
 
   ws.on('close', async () => {
+    console.log('[Twilio][media] ws closed');
     await finalize();
   });
 
-  ws.on('error', async () => {
+  ws.on('error', async (err: any) => {
+    console.error('[Twilio][media] ws error:', err?.message || err);
     await finalize();
   });
 }

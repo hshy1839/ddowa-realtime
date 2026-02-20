@@ -71,6 +71,7 @@ async function main() {
     try {
       const called = String(req.body?.To || '');
       const from = String(req.body?.From || '');
+      console.log(`[Twilio][voice] incoming webhook To=${called} From=${from}`);
 
       const workspaceId = (await findWorkspaceByTwilioNumber(called)) || '';
 
@@ -93,6 +94,7 @@ async function main() {
       const stream = new URL(streamUrl);
       stream.searchParams.set('workspaceId', workspaceId);
       if (from) stream.searchParams.set('from', from);
+      console.log(`[Twilio][voice] workspaceId=${workspaceId} stream=${stream.toString()}`);
 
       const twiml = buildTwimlStreamResponse(stream.toString());
       res.set('Content-Type', 'text/xml');
