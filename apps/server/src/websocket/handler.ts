@@ -774,7 +774,7 @@ export async function handleBookingCrudByPhone(session: WSSession, userTextRaw: 
       endAt,
       serviceName,
       status: 'confirmed',
-      memo: `phone:${phone} | service:${serviceName}`,
+      memo: `${phone} `,
     });
     console.log(`[WEB][booking] created id=${booking._id} workspace=${session.workspaceId} contact=${contact._id} at=${startAt.toISOString()} service=${serviceName}`);
     session.lastCreatedBookingId = String(booking._id);
