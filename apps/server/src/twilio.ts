@@ -264,7 +264,7 @@ export async function handleTwilioMediaWS(ws: WebSocket, reqUrl: string) {
     if (!dts.length) return false;
 
     const startAt = dts[0];
-    const endAt = new Date(startAt.getTime() + 30 * 60 * 1000);
+    const endAt = startAt;
     const exists = await Booking.findOne({
       workspaceId,
       contactId: contact._id,

@@ -592,14 +592,14 @@ async function handleBookingCrudByPhone(session: WSSession, userTextRaw: string)
   if (isRead) {
     const list = await Booking.find({ workspaceId: session.workspaceId, contactId: contact._id }).sort({ startAt: 1 }).limit(5).lean();
     if (!list.length) return `전화번호 ${phone} 기준 예약 내역이 없습니다.`;
-    const lines = list.map((b: any, i: number) => `${i + 1}) ${new Date(b.startAt).toLocaleString('ko-KR')} ~ ${new Date(b.endAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} (${b.status})`);
+    const lines = list.map((b: any, i: number) => `${i + 1}) ${new Date(b.startAt).toLocaleString('ko-KR')} (${b.status})`);
     return `전화번호 ${phone} 예약 내역입니다.\n` + lines.join('\n');
   }
 
   if (isCreate) {
     if (!dts.length) return '예약 추가할 날짜/시간을 말씀해 주세요. 예: 내일 오후 3시 / 2월 18일 14시';
     const startAt = dts[0];
-    const endAt = new Date(startAt.getTime() + 30 * 60 * 1000);
+    const endAt = startAt;
     const exists = await Booking.findOne({
       workspaceId: session.workspaceId,
       contactId: contact._id,
@@ -627,9 +627,8 @@ async function handleBookingCrudByPhone(session: WSSession, userTextRaw: string)
     if (!target) return `변경할 예약이 없습니다. 전화번호 ${phone} 기준 예약 내역을 먼저 확인해 주세요.`;
     if (!dts.length) return '예약 변경할 새 날짜/시간을 말씀해 주세요. 예: 모레 16시 / 3월 1일 오후 2시';
     const newStart = dts[dts.length - 1];
-    const newEnd = new Date(newStart.getTime() + 30 * 60 * 1000);
     target.startAt = newStart;
-    target.endAt = newEnd;
+    target.endAt = newStart;
     await target.save();
     return `예약 시간을 변경했습니다. (${newStart.toLocaleString('ko-KR')})`;
   }

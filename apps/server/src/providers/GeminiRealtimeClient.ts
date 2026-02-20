@@ -103,8 +103,8 @@ export class GeminiRealtimeClient extends EventEmitter {
             // 초저지연 프로필: 말 시작을 더 공격적으로 감지
             startOfSpeechSensitivity: 'START_SENSITIVITY_HIGH',
             endOfSpeechSensitivity: 'END_SENSITIVITY_HIGH',
-            silenceDurationMs: Number(process.env.GEMINI_VAD_SILENCE_MS || 180),
-            prefixPaddingMs: Number(process.env.GEMINI_VAD_PREFIX_MS || 180),
+            silenceDurationMs: Number(process.env.GEMINI_VAD_SILENCE_MS || 120),
+            prefixPaddingMs: Number(process.env.GEMINI_VAD_PREFIX_MS || 120),
           },
           turnCoverage: 'TURN_INCLUDES_ONLY_ACTIVITY',
         },

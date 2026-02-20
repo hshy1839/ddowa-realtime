@@ -57,11 +57,12 @@ export async function POST(request: NextRequest) {
 
     const contact = await findOrCreateContact(token.workspaceId, phone);
 
+    const start = new Date(startAt);
     const booking = await Booking.create({
       workspaceId: token.workspaceId,
       contactId: contact?._id,
-      startAt: new Date(startAt),
-      endAt: new Date(endAt),
+      startAt: start,
+      endAt: endAt ? new Date(endAt) : start,
       serviceName,
       memo,
       status,

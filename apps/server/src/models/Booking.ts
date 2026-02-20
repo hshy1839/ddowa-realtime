@@ -18,7 +18,7 @@ const BookingSchema = new mongoose.Schema(
     },
     endAt: {
       type: Date,
-      required: true,
+      required: false,
     },
     serviceName: String,
     memo: String,

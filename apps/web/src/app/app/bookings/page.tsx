@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 type Booking = {
   _id: string;
   startAt: string;
-  endAt: string;
+  endAt?: string;
   serviceName?: string;
   memo?: string;
   status: 'pending' | 'confirmed' | 'completed' | 'cancelled';
@@ -22,7 +22,6 @@ export default function BookingsPage() {
   const [editing, setEditing] = useState<Booking | null>(null);
   const [form, setForm] = useState({
     startAt: '',
-    endAt: '',
     serviceName: '',
     memo: '',
     phone: '',
@@ -68,11 +67,9 @@ export default function BookingsPage() {
   const openCreate = (day?: Date) => {
     const base = day || selectedDate;
     const start = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 10, 0);
-    const end = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 10, 30);
     setEditing(null);
     setForm({
       startAt: toInputDate(start),
-      endAt: toInputDate(end),
       serviceName: '1:1 상담',
       memo: '',
       phone: '',
@@ -84,7 +81,6 @@ export default function BookingsPage() {
     setEditing(b);
     setForm({
       startAt: toInputDate(new Date(b.startAt)),
-      endAt: toInputDate(new Date(b.endAt)),
       serviceName: b.serviceName || '',
       memo: b.memo || '',
       phone: b.phone || '',
@@ -93,11 +89,10 @@ export default function BookingsPage() {
   };
 
   const submit = async () => {
-    if (!form.startAt || !form.endAt) return alert('시작/종료 시간을 입력하세요.');
+    if (!form.startAt) return alert('예약 시간을 입력하세요.');
 
     const payload = {
       startAt: new Date(form.startAt).toISOString(),
-      endAt: new Date(form.endAt).toISOString(),
       serviceName: form.serviceName,
       memo: form.memo,
       phone: form.phone,
@@ -120,7 +115,7 @@ export default function BookingsPage() {
 
     await fetchBookings();
     setEditing(null);
-    setForm({ startAt: '', endAt: '', serviceName: '', memo: '', phone: '', status: 'pending' });
+    setForm({ startAt: '', serviceName: '', memo: '', phone: '', status: 'pending' });
   };
 
   const remove = async (id: string) => {
@@ -183,7 +178,7 @@ export default function BookingsPage() {
                   <div>
                     <p className="font-medium">{b.serviceName || '서비스'}</p>
                     <p className="text-xs text-black/60">
-                      {new Date(b.startAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ~ {new Date(b.endAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {new Date(b.startAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>
                     {b.phone && <p className="text-xs mt-1 text-black/70">전화번호: {b.phone}</p>}
                     {b.memo && <p className="text-sm mt-1 text-black/75">{b.memo}</p>}
@@ -201,9 +196,8 @@ export default function BookingsPage() {
 
         <div className="border border-black/10 rounded-xl p-3">
           <h3 className="font-medium mb-2">{editing ? '예약 수정' : '예약 추가'}</h3>
-          <div className="grid sm:grid-cols-2 gap-2 mb-2">
+          <div className="grid sm:grid-cols-1 gap-2 mb-2">
             <input type="datetime-local" value={form.startAt} onChange={(e) => setForm((p) => ({ ...p, startAt: e.target.value }))} className="px-3 py-2 rounded-lg border border-black/20" />
-            <input type="datetime-local" value={form.endAt} onChange={(e) => setForm((p) => ({ ...p, endAt: e.target.value }))} className="px-3 py-2 rounded-lg border border-black/20" />
           </div>
           <input placeholder="서비스명" value={form.serviceName} onChange={(e) => setForm((p) => ({ ...p, serviceName: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-black/20 mb-2" />
           <input placeholder="고객 전화번호 (예: 01012345678)" value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-black/20 mb-2" />

@@ -38,7 +38,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       { _id: id, workspaceId: token.workspaceId },
       {
         ...(startAt ? { startAt: new Date(startAt) } : {}),
-        ...(endAt ? { endAt: new Date(endAt) } : {}),
+        ...((startAt || endAt) ? { endAt: new Date(endAt || startAt) } : {}),
         ...(serviceName !== undefined ? { serviceName } : {}),
         ...(memo !== undefined ? { memo } : {}),
         ...(status ? { status } : {}),

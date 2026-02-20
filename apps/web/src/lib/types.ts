@@ -71,7 +71,7 @@ export interface Booking {
   workspaceId: string;
   contactId?: string;
   startAt: Date;
-  endAt: Date;
+  endAt?: Date;
   serviceName?: string;
   memo?: string;
   status: 'pending' | 'confirmed' | 'completed' | 'cancelled';

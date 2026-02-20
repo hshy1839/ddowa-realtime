@@ -5,7 +5,7 @@ const BookingSchema = new mongoose.Schema(
     workspaceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Workspace', required: true },
     contactId: { type: mongoose.Schema.Types.ObjectId, ref: 'Contact', sparse: true },
     startAt: { type: Date, required: true },
-    endAt: { type: Date, required: true },
+    endAt: { type: Date, required: false },
     serviceName: String,
     memo: String,
     status: {
